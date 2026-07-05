@@ -98,6 +98,4 @@ autre theme, voir la table des couleurs dans `docs/GameDraw-Documentation.md`.
 
 ## Licence
 
-[MIT](LICENSE) - fais-en ce que tu veux, sans garantie. C'est le choix le plus simple et le plus
-permissif pour un projet perso ; change pour une autre licence (GPL si tu veux forcer le partage
-des modifications, Unlicense pour du domaine public pur) si tes besoins evoluent.
+[MIT](LICENSE)
