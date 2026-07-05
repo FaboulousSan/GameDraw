@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <style>
+      .bg     { fill: #11111B; }
+      .card   { fill: #1E1E2E; }
+      .accent { fill: #89B4FA; }
+      .warn   { fill: #F9E2AF; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="200" height="200" rx="36"/>
+  <rect class="card" x="30" y="30" width="140" height="140" rx="26"/>
+  <circle class="accent" cx="68"  cy="68"  r="12"/>
+  <circle class="accent" cx="132" cy="68"  r="12"/>
+  <circle class="warn"   cx="100" cy="100" r="14"/>
+  <circle class="accent" cx="68"  cy="132" r="12"/>
+  <circle class="accent" cx="132" cy="132" r="12"/>
+</svg>
