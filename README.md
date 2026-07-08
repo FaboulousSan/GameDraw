@@ -46,7 +46,6 @@ vraiment a autre chose que Mario Kart.
 - **Personnalisation etendue** (densite d'affichage, animation, valeurs par defaut) centralisee dans un menu Options
 - Journalisation des erreurs (`%USERPROFILE%\GameDraw\error.log`) pour un diagnostic rapide
 
-Documentation complete (architecture, schemas JSON, diagrammes) : [`docs/GameDraw-Documentation.md`](docs/GameDraw-Documentation.md) - compatible import direct dans WikiJS.
 
 ## Installation
 
