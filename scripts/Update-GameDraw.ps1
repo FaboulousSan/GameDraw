@@ -4,7 +4,8 @@
     sans jamais toucher aux donnees utilisateur.
 .DESCRIPTION
     Les donnees (bibliotheques de jeux, historique, plateformes, config,
-    catalogues) vivent dans %USERPROFILE%\GameDraw et ne sont JAMAIS dans le
+    catalogues) vivent dans le dossier de donnees choisi par l'utilisateur (Options ->
+.   Emplacement des donnees ; par defaut %LOCALAPPDATA%\GameDraw) et ne sont JAMAIS dans le
     dossier d'installation. Ce script ne copie donc que le code et les
     ressources (scripts\, assets\, docs\, Launcher.bat) par-dessus
     l'installation actuelle. Aucune donnee de jeu n'est jamais supprimee ou
@@ -83,4 +84,4 @@ if ($tempExtract) { Remove-Item $tempExtract -Recurse -Force -ErrorAction Silent
 Write-Host ""
 Write-Host "Mise a jour terminee." -ForegroundColor Green
 Write-Host "Sauvegarde de l'ancienne version conservee dans : $backupDir" -ForegroundColor Green
-Write-Host "Tes donnees (jeux, historique, config) n'ont pas ete touchees (elles vivent dans $env:USERPROFILE\GameDraw)." -ForegroundColor Green
+Write-Host "Tes donnees (jeux, historique, config) n'ont pas ete touchees (voir Options -> Emplacement des donnees pour savoir ou elles vivent)." -ForegroundColor Green

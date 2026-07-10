@@ -10,7 +10,17 @@
 $root       = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root       = Split-Path -Parent $root  # remonte au dossier racine du package
 $ps1Path    = Join-Path $root "scripts\Tirage-Jeux.ps1"
-$configFile = Join-Path (Join-Path $env:USERPROFILE "GameDraw") "config.json"
+
+# Meme logique de resolution que l'application principale : les donnees
+# peuvent avoir ete deplacees par l'utilisateur (Options -> Emplacement des
+# donnees), on suit le pointeur plutot que de supposer un chemin fixe.
+$appDataPointer = Join-Path $env:APPDATA "GameDraw\datalocation.txt"
+$dataRoot = Join-Path $env:LOCALAPPDATA "GameDraw"
+if (Test-Path $appDataPointer) {
+    $chemin = (Get-Content $appDataPointer -Raw -Encoding UTF8).Trim()
+    if ($chemin) { $dataRoot = $chemin }
+}
+$configFile = Join-Path $dataRoot "config.json"
 
 $iconChoices = @{
     Original = "GameDraw_v2.ico"

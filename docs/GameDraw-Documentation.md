@@ -248,6 +248,47 @@ Database](https://gamesdb.launchbox-app.com/). Le fichier telecharge doit ensuit
 manuellement via "Choisir..." dans la Fiche du jeu (pas de telechargement automatique, pour eviter
 toute dependance a une cle API).
 
+Pour un ajout entierement automatique (nom + jaquette en un clic), voir **Recherche en ligne
+(RAWG)** ci-dessous.
+
+## Recherche en ligne (RAWG) - ajout automatique nom + jaquette
+
+Depuis "Gerer les jeux", le bouton **"En ligne"** a cote du champ d'ajout de jeu cherche le nom
+tape sur [RAWG.io](https://rawg.io/apidocs) (base de plus de 500 000 jeux) et propose les
+resultats sous forme de vignettes cliquables. Cliquer une vignette ajoute le jeu a la
+bibliotheque **et** telecharge automatiquement sa jaquette (`background_image` de l'API RAWG) -
+comparable a la reconnaissance automatique de bibliotheque de Steam.
+
+**Necessite une cle API gratuite** (compte RAWG, ~2 minutes, aucune carte bancaire) a renseigner
+une seule fois dans **Options -> Recherche en ligne (RAWG)**. Sans cle configuree, le bouton
+affiche un message d'information au lieu d'echouer silencieusement.
+
+La recherche est synchrone : l'application est brievement non-reactive pendant l'appel reseau
+(typiquement moins de 2 secondes). Une version avec recherche en arriere-plan serait plus polie
+mais ajoute une complexite de threading volontairement evitee ici pour une action manuelle et
+ponctuelle.
+
+## Emplacement des donnees
+
+Par defaut, toutes les donnees (bibliotheques de jeux, historique, catalogues, images, config,
+`error.log`) vivent dans **`%LOCALAPPDATA%\GameDraw`** - l'emplacement conventionnel Windows pour
+les donnees d'application, peu visible. Un petit fichier pointeur
+(`%APPDATA%\GameDraw\datalocation.txt`) indique l'emplacement reel choisi, ce qui permet de le
+changer librement sans jamais modifier le script.
+
+**Changer l'emplacement** : Options -> Emplacement des donnees -> "Changer l'emplacement...".
+Copie l'integralite des donnees vers le nouveau dossier (l'ancien est conserve, jamais supprime
+automatiquement). **Necessite un redemarrage complet de l'application** (pas juste une fermeture
+de fenetre) : `$root` et tout ce qui en depend (`configFile`, `platformFile`, `catalogueFile`,
+dossier `images`...) ne sont resolus qu'une seule fois au tout debut du script, avant la boucle de
+rechargement - contrairement au theme ou a l'icone, ce changement ne peut pas etre applique a
+chaud.
+
+**Migration automatique** : si l'application detecte d'anciennes donnees a l'ancien emplacement
+(`%USERPROFILE%\GameDraw`, utilise jusqu'a la Beta 0.8) et qu'aucune donnee n'existe encore au
+nouvel emplacement, elle migre automatiquement une seule fois au premier lancement - aucune action
+requise, rien n'est perdu.
+
 ## Statistiques
 
 Par plateforme : nombre total de jeux, jeux notes (et pourcentage), jeux "deja tires" dans le
@@ -280,21 +321,7 @@ Toute action de l'interface est enrobee dans `Invoke-Safe`, qui :
 En cas de comportement inattendu, la premiere chose a fournir pour un diagnostic est le contenu de
 ce fichier.
 
-## Historique des versions (resume)
+## Historique des versions
 
-| Version | Points cles |
-|---|---|
-| v11 | Version de base : themes, gestion jeux/plateformes, tirage avec duree |
-| v13-v15 | Correction couleur des etoiles (rendu direct sans binding XAML), correction persistance du theme (config.json) |
-| v16-v17 | Refonte du selecteur de theme (Popup), theme Ocarina of Time authentique, 4 nouveaux themes, notation par clic direct, recherche, catalogues Switch/PC |
-| v18-v19 | Corrections de caracteres Unicode hors plan de base (icones), animation de tirage, statistiques, barre de pool |
-| v20 | Generalisation du systeme de config, personnalisation etendue (densite, animation, valeurs par defaut), Invoke-Safe generalise |
-| v21 | README + documentation a jour, script de mise a jour, raccourci bureau in-app, interface adaptive |
-| v22 | Correction de fonctions imbriquees non resolues depuis des blocs Invoke-Safe (notation par clic, rafraichissement post-tirage, menus Options) |
-| v23 | Refonte du mecanisme d'animation de tirage (objet mutable au lieu de variables $script: + closures), correction des listes deroulantes illisibles sur certains themes, tentative de rechargement automatique si une fenetre echoue a s'ouvrir |
-| v24 | Harmonisation des icones sur Segoe Fluent Icons (theme, options, statistiques, catalogue, suppression, rafraichir), visuels pour le depot Git (banniere, icone, maquette d'interface) |
-| v25 | Fiche du jeu par titre : jaquette, logo, capture d'ecran, icone (images locales copiees dans le dossier de donnees) et commentaire libre ; vignette dans la liste ; sauvegarde/restauration etendue aux images |
-| v26 | Choix de l'icone de l'application (3 options, avec apercu dans Options), lanceur sans fenetre console visible, recherche de jaquette en ligne (SteamGridDB) depuis la Fiche du jeu |
-| Beta 0.1 | Passage au schema de version "Beta X.Y" (affichee discretement en bas a droite de la fenetre principale au lieu de la barre de titre) ; vignette (jaquette/icone) dans l'historique ; effets visuels au tirage (jaquette du jeu tire affichee en grand, animation "pop", confetti) ; LICENSE (MIT) |
-| Beta 0.2 | Retrait complet du VBS (raccourci ciblant PowerShell directement avec flag d'elevation patche dans le .lnk) ; correction du changement d'icone qui ne s'appliquait pas (declenchait desormais un rechargement) ; icones fournies rendues transparentes ; nouveau Backlog (vue en grille avec pochettes et fiches completes) ; ombres portees sur les cartes principales |
+Voir [`CHANGELOG.md`](../CHANGELOG.md) a la racine du depot pour le detail version par version.
 | Beta 0.1 | Passage au schema de version "Beta X.Y" (affichee discretement en bas a droite de la fenetre principale au lieu de la barre de titre) ; vignette (jaquette/icone) dans l'historique ; effets visuels au tirage (jaquette du jeu tire affichee en grand, animation "pop", confetti) ; LICENSE (MIT) |
