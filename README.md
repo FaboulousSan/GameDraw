@@ -31,7 +31,6 @@ droit que tu joues vraiment a autre chose que Mario Kart.
 - [Themes](#themes)
 - [Mettre a jour](#mettre-a-jour)
 - [Ou vivent tes donnees](#ou-vivent-tes-donnees)
-- [Faire une release GitHub](#faire-une-release-github)
 - [Licence](#licence)
 
 ## Fonctionnalites
