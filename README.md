@@ -22,6 +22,8 @@ lui, oui, meme celui que tu as achete en solde et jamais lance), une duree de se
 pour eviter le "encore une partie" qui dure 4h, et un historique complet pour prouver a qui de
 droit que tu joues vraiment a autre chose que Mario Kart.
 
+Go le DL la dernière version ici => https://github.com/FaboulousSan/GameDraw/archive/refs/tags/0.36.zip
+
 ## Sommaire
 
 - [Fonctionnalites](#fonctionnalites)
