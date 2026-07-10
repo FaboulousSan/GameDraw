@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-Beta%200.35-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-Beta%200.36-blue">
   <img alt="license" src="https://img.shields.io/badge/licence-MIT-green">
   <img alt="platform" src="https://img.shields.io/badge/plateforme-Windows%2011-informational">
   <img alt="stack" src="https://img.shields.io/badge/stack-PowerShell%20%2B%20WPF-5391FE">
