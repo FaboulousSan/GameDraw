@@ -181,45 +181,6 @@ Ce script sauvegarde l'installation actuelle avant d'ecraser le code (`scripts\`
 
 L'emplacement exact est visible et modifiable depuis **Options -> Emplacement des donnees**.
 
-## Faire une release GitHub
-
-Pour publier une nouvelle version sur GitHub une fois le code pret :
-
-1. **Mets a jour le changelog** : ajoute une section en haut de `CHANGELOG.md` pour la nouvelle
-   version, avec la date et ce qui a change (deja fait au fil du developpement dans ce projet).
-2. **Verifie le numero de version** dans `scripts\Tirage-Jeux.ps1`
-   (`$script:gdVersion = "Beta 0.XX"`) - il s'affiche en bas a droite de la fenetre principale.
-3. **Commit et push** les changements sur la branche principale :
-   ```bash
-   git add -A
-   git commit -m "Beta 0.XX : resume des changements"
-   git push
-   ```
-4. **Cree un tag Git** correspondant a la version (convention [SemVer](https://semver.org/lang/fr/)
-   recommandee, ex. `v0.33.0`) :
-   ```bash
-   git tag v0.33.0
-   git push origin v0.33.0
-   ```
-5. **Cree la release sur GitHub** :
-   - Va sur la page du depot -> onglet **Releases** (dans la colonne de droite, ou
-     `https://github.com/<utilisateur>/<depot>/releases`).
-   - Clique **"Draft a new release"**.
-   - Choisis le tag cree a l'etape 4 (ou cree-le directement ici si tu as saute l'etape en ligne
-     de commande).
-   - Titre : par exemple `Beta 0.33`.
-   - Description : colle la section correspondante de `CHANGELOG.md`.
-   - **Attache le fichier `.zip`** du package complet (`GameDraw_Package_Beta0.XX.zip`) en le
-     glissant dans la zone "Attach binaries" - c'est ce fichier que les utilisateurs
-     telecharge­ront.
-   - Coche **"Set as the latest release"**, puis **"Publish release"**.
-6. C'est publie : le lien `https://github.com/<utilisateur>/<depot>/releases/latest` pointera
-   toujours vers cette version.
-
-**Astuce** : GitHub peut aussi generer un zip automatique du code source a chaque tag (bouton
-"Source code (zip)"), mais ce n'est **pas** la meme chose que ton package applicatif complet
-(qui contient aussi les assets et la structure de dossier attendue par `Launcher.bat`) - attache
-toujours ton propre `.zip` manuellement comme decrit ci-dessus.
 
 ## Licence
 
