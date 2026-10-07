@@ -1,0 +1,40 @@
+{
+  "name": "gamedraw-tauri",
+  "private": true,
+  "version": "1.0.3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test": "vitest run --config vitest.config.ts",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-fs": "^2.0.3",
+    "@lucide/svelte": "^1.27.0",
+    "@fontsource/rajdhani": "^5.1.0",
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "@tauri-apps/plugin-notification": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tauri-apps/cli": "^2.1.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "svelte": "^5.1.16",
+    "svelte-check": "^4.0.9",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^4.1.10"
+  },
+  "author": "Faboulous San",
+  "description": "GameDraw - tirage aléatoire de jeux vidéo, local-first",
+  "allowScripts": {
+    "esbuild": true
+  }
+}

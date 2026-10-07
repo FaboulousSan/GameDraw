@@ -1,0 +1,33 @@
+[package]
+name = "gamedraw"
+version = "1.0.3"
+description = "GameDraw - tirage aleatoire de jeux video, local-first"
+authors = ["Faboulous San"]
+edition = "2021"
+
+[lib]
+name = "gamedraw_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png", "protocol-asset"] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+zip = { version = "2", default-features = false, features = ["deflate", "aes-crypto"] }
+walkdir = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

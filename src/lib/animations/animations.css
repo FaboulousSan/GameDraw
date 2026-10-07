@@ -1,0 +1,236 @@
+/* --- Roue de roulette --- */
+.wheel-wrap { position: relative; width: 140px; height: 140px; }
+.wheel {
+  width: 100%; height: 100%; border-radius: 50%;
+  background: conic-gradient(var(--accent) 0deg 45deg, var(--success) 45deg 90deg, var(--warning) 90deg 135deg,
+    var(--danger) 135deg 180deg, var(--accent) 180deg 225deg, var(--success) 225deg 270deg,
+    var(--warning) 270deg 315deg, var(--danger) 315deg 360deg);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--border) 80%, transparent), 0 10px 30px rgba(0,0,0,0.4);
+}
+.wheel-pointer {
+  position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent;
+  border-top: 15px solid var(--text); z-index: 3;
+}
+.wheel-hub {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 40px; border-radius: 50%; background: var(--darkbg);
+  display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+}
+
+/* --- Bandeau défilant --- */
+.bandeau-viewport {
+  width: 200px; height: 44px; overflow: hidden; border-radius: 8px;
+  background: color-mix(in srgb, var(--input) 70%, transparent); position: relative;
+}
+.bandeau-viewport::before, .bandeau-viewport::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 12px; z-index: 2; pointer-events: none;
+}
+.bandeau-viewport::before { top: 0; background: linear-gradient(var(--card), transparent); }
+.bandeau-viewport::after { bottom: 0; background: linear-gradient(transparent, var(--card)); }
+.bandeau-list { display: flex; flex-direction: column; }
+.bandeau-item {
+  height: 44px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; padding: 0 8px; text-align: center;
+}
+
+/* --- Machine à sous --- */
+.des-row { display: flex; gap: 10px; }
+.de {
+  width: 50px; height: 50px; border-radius: 10px; background: color-mix(in srgb, var(--input) 80%, transparent);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.8rem;
+}
+
+/* --- Chenillard --- */
+.chenillard-row { display: flex; gap: 7px; }
+.dot {
+  width: 13px; height: 13px; border-radius: 50%; background: color-mix(in srgb, var(--input) 90%, transparent);
+  border: 1px solid var(--border); transition: background-color 0.08s ease, box-shadow 0.08s ease;
+}
+.dot.on {
+  background: var(--accent); box-shadow: 0 0 12px 2px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* --- Cartes en cascade --- */
+.cartes-row { display: flex; gap: 7px; }
+.carte {
+  width: 56px; height: 76px; border-radius: 8px; background: color-mix(in srgb, var(--input) 85%, transparent);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; text-align: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.62rem; padding: 4px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.carte.stopped {
+  border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* --- Vague / égaliseur --- */
+.vague-row { display: flex; align-items: flex-end; gap: 5px; height: 64px; }
+.barre-vague { width: 9px; background: linear-gradient(var(--accent), var(--success)); border-radius: 3px; }
+
+/* --- Radar --- */
+.radar-scene {
+  position: relative; width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.radar-sweep {
+  position: absolute; top: 0; left: 50%; width: 2px; height: 50%; transform-origin: bottom center;
+  background: linear-gradient(var(--accent), transparent);
+}
+.radar-nom {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.72rem; color: var(--text);
+  text-align: center; padding: 0 10px; z-index: 2;
+}
+
+/* --- Pendule --- */
+.pendule-scene { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 140px; }
+.pendule-tige {
+  width: 3px; height: 90px; background: var(--accent); transform-origin: top center; border-radius: 2px;
+}
+.pendule-tige::after {
+  content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+  margin-top: 88px; margin-left: -6.5px;
+}
+.pendule-nom {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.85rem; color: var(--text); text-align: center;
+}
+
+/* --- Cascade de tuiles --- */
+.cascade-row { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.tuile-cascade {
+  width: 150px; padding: 6px 10px; border-radius: 8px; text-align: center;
+  background: color-mix(in srgb, var(--input) 85%, transparent); border: 1px solid var(--border);
+  font-family: var(--font-display); font-weight: 600; font-size: 0.8rem;
+  transform: translateY(-30px); opacity: 0; transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+}
+.tuile-cascade.posee { transform: translateY(0); opacity: 1; }
+.tuile-cascade.gagnante { border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* --- Carte qui se retourne --- */
+.flip-scene { perspective: 500px; }
+.flip-carte {
+  width: 130px; height: 76px; border-radius: 10px; background: color-mix(in srgb, var(--input) 85%, transparent);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  transform-style: preserve-3d;
+}
+.flip-texte {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.75rem; color: var(--text);
+  text-align: center; padding: 0 8px;
+}
+
+/* --- Rideau de théâtre --- */
+.rideau-scene { position: relative; width: 220px; height: 90px; overflow: hidden; border-radius: 8px; }
+.rideau-nom {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: var(--text); z-index: 1;
+}
+.rideau-panneau {
+  position: absolute; top: 0; bottom: 0; width: 50%; background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 60%, black));
+  z-index: 2; box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+}
+.rideau-gauche { left: 0; border-right: 2px solid rgba(0,0,0,0.3); }
+.rideau-droite { right: 0; border-left: 2px solid rgba(0,0,0,0.3); }
+
+/* --- Machine à écrire --- */
+.typewriter-scene { display: flex; align-items: center; gap: 2px; min-height: 32px; }
+.typewriter-texte { font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: var(--text); }
+.typewriter-curseur { font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: var(--accent); animation: typewriter-clignote 0.8s step-end infinite; }
+@keyframes typewriter-clignote { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+
+/* --- Dominos --- */
+.domino-row { display: flex; gap: 4px; align-items: flex-end; }
+.domino-tuile {
+  width: 34px; height: 64px; background: color-mix(in srgb, var(--input) 85%, transparent);
+  border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.55rem; text-align: center; padding: 2px;
+  transform-origin: bottom center; transition: transform 0.3s ease-in;
+}
+.domino-tuile.tombe { transform: rotate(75deg); }
+.domino-tuile.gagnante.tombe { transform: rotate(0deg); border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* --- Spirale --- */
+.spirale-scene { position: relative; width: 200px; height: 160px; }
+.spirale-item {
+  position: absolute; top: 50%; left: 50%; margin-top: -10px; margin-left: -30px; width: 60px;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.6rem; color: var(--text); text-align: center;
+}
+
+/* --- Pulsation --- */
+.pulsation-scene { display: flex; align-items: center; justify-content: center; }
+.pulsation-cercle {
+  width: 100px; height: 100px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center;
+}
+.pulsation-nom {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.72rem; color: var(--text);
+  text-align: center; padding: 0 8px;
+}
+
+/* --- Faisceau balayant --- */
+.faisceau-row { display: flex; flex-direction: column; gap: 5px; }
+.faisceau-item {
+  padding: 5px 12px; border-radius: 6px; background: color-mix(in srgb, var(--input) 80%, transparent);
+  border: 1px solid var(--border); font-family: var(--font-display); font-weight: 600; font-size: 0.75rem;
+  color: var(--muted); transition: background-color 0.1s ease, color 0.1s ease, box-shadow 0.1s ease;
+}
+.faisceau-item.eclaire {
+  background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* --- Ascenseur --- */
+.ascenseur-scene {
+  height: 34px; width: 200px; overflow: hidden; position: relative;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--input) 70%, transparent);
+}
+.ascenseur-piste { display: flex; flex-direction: column; }
+.ascenseur-item {
+  height: 34px; line-height: 34px; text-align: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.82rem; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px;
+}
+
+/* --- Machine à jetons --- */
+.machine-scene { display: flex; align-items: center; justify-content: center; }
+.machine-fente {
+  min-width: 150px; padding: 10px 16px; border-radius: 10px;
+  background: color-mix(in srgb, var(--input) 85%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.machine-nom {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.86rem; color: var(--text);
+}
+
+/* --- Enseigne néon --- */
+.neon-scene { display: flex; gap: 1px; justify-content: center; flex-wrap: wrap; padding: 0 10px; }
+.neon-lettre {
+  font-family: var(--font-display); font-weight: 700; font-size: 1.3rem;
+  color: color-mix(in srgb, var(--muted) 40%, transparent);
+  transition: color 0.1s ease, text-shadow 0.1s ease;
+}
+.neon-lettre.allumee {
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent), 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* --- Coffre au trésor --- */
+.coffre-scene { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.coffre-couvercle { font-size: 2.4rem; line-height: 1; transition: transform 0.4s cubic-bezier(.3,1.4,.5,1), opacity 0.4s ease; }
+.coffre-couvercle.tremble { animation: coffre-tremble 0.22s ease-in-out infinite; }
+.coffre-couvercle.ouvert { transform: translateY(-14px) scale(1.25) rotate(-8deg); opacity: 0.25; }
+@keyframes coffre-tremble {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-2px, 0) rotate(-3deg); }
+  75% { transform: translate(2px, 0) rotate(3deg); }
+}
+.coffre-nom {
+  font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: var(--text);
+  opacity: 0; transform: scale(0.7); transition: opacity 0.35s ease, transform 0.35s cubic-bezier(.3,1.5,.5,1);
+  text-align: center; padding: 0 10px;
+}
+.coffre-nom.visible { opacity: 1; transform: scale(1); }
