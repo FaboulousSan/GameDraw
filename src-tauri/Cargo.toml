@@ -1,0 +1,44 @@
+[package]
+name = "gamedraw"
+version = "1.0.3"
+description = "GameDraw - tirage aleatoire de jeux video, local-first"
+authors = ["Faboulous San"]
+edition = "2021"
+
+[lib]
+name = "gamedraw_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+# HF15: coordonner le codegen utilisé par Tauri 2.11.5
+# et empêcher Cargo de sélectionner 2.7.x durant la génération d'un lockfile neuf.
+tauri-codegen = { version = "=2.6.3", default-features = false }
+
+[dependencies]
+tauri = { version = "=2.11.5", features = ["tray-icon", "image-ico", "image-png", "protocol-asset"] }
+# HF15 — garde de compatibilité Rust/Tauri. Ce sont des dépendances
+# internes de Tauri, épinglées à la famille publiée avec tauri 2.11.5.
+# Ne pas laisser Cargo tirer tauri-runtime 2.12 / macros 2.7 par mégarde.
+tauri-runtime = { version = "=2.11.3", default-features = false }
+tauri-runtime-wry = { version = "=2.11.4", default-features = false }
+tauri-macros = "=2.6.3"
+tauri-plugin = { version = "=2.6.3", default-features = false }
+tauri-utils = { version = "=2.9.3", default-features = false }
+tauri-plugin-fs = "=2.5.1"
+tauri-plugin-dialog = "=2.7.2"
+tauri-plugin-notification = "=2.3.3"
+tauri-plugin-opener = "=2.5.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+zip = { version = "2", default-features = false, features = ["deflate", "aes-crypto"] }
+walkdir = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

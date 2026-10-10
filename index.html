@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GameDraw</title>
+    <link rel="icon" type="image/png" href="/icons/gamedraw-light.png" />
+    <!-- Secours indépendant de Svelte/Vite : une erreur de chargement n'affiche plus une fenêtre blanche. -->
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #181825; color: #f2f3fc; font-family: system-ui, 'Segoe UI', sans-serif; }
+      #gd-boot { min-height: 90vh; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 24px; }
+      .gd-boot-panel { box-sizing: border-box; width: min(560px, 100%); padding: 28px; border: 1px solid #565d78; border-radius: 16px; background: #262638; box-shadow: 0 20px 60px #0b0c1940; }
+      .gd-boot-brand { margin: 0 0 8px; color: #9bc1ff; font-weight: 800; font-size: 22px; }
+      .gd-boot-caption { margin: 0; color: #d3d6e6; line-height: 1.5; }
+      #gd-boot-error { margin-top: 18px; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; background: #1b1b2a; border-left: 3px solid #f38ba8; border-radius: 6px; color: #ffe1e9; line-height: 1.5; font-size: 13px; }
+      #gd-boot[hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="gd-boot" role="status" aria-live="polite">
+      <div class="gd-boot-panel">
+        <p class="gd-boot-brand">🎮 GameDraw</p>
+        <p class="gd-boot-caption" id="gd-boot-caption">Démarrage de l’interface…</p>
+        <pre id="gd-boot-error" hidden></pre>
+      </div>
+    </div>
+    <div id="app"></div>
+    <!-- Chargé AVANT main.ts, pour capturer même les erreurs d'import des modules Svelte. -->
+    <script defer src="/boot-watchdog.js"></script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

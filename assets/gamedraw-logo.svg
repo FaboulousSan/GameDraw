@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200">
+  <defs>
+    <!-- Palette du theme par defaut (Catppuccin). Pour reskinner ce logo avec
+         un autre theme de l'application, il suffit de remplacer ces 5
+         couleurs par celles du theme voulu (voir docs/GameDraw-Documentation.md,
+         section "Palette des themes"). -->
+    <style>
+      .gd-bg     { fill: #181825; }
+      .gd-card   { fill: #1E1E2E; }
+      .gd-accent { fill: #89B4FA; }
+      .gd-success{ fill: #A6E3A1; }
+      .gd-warn   { fill: #F9E2AF; }
+      .gd-text   { fill: #FFFFFF; font-family: 'Segoe UI', Arial, sans-serif; font-weight: 700; }
+      .gd-sub    { fill: #BAC2DE; font-family: 'Segoe UI', Arial, sans-serif; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect class="gd-bg" x="0" y="0" width="640" height="200" rx="20"/>
+
+  <!-- Badge / de -->
+  <g transform="translate(28,30)">
+    <rect class="gd-card" x="0" y="0" width="140" height="140" rx="24"/>
+    <rect class="gd-accent" x="14" y="14" width="112" height="112" rx="16" opacity="0.15"/>
+    <!-- pips du de, disposition "5" -->
+    <circle class="gd-accent" cx="38"  cy="38"  r="11"/>
+    <circle class="gd-accent" cx="102" cy="38"  r="11"/>
+    <circle class="gd-warn"   cx="70"  cy="70"  r="13"/>
+    <circle class="gd-accent" cx="38"  cy="102" r="11"/>
+    <circle class="gd-accent" cx="102" cy="102" r="11"/>
+  </g>
+
+  <!-- Etoile decorative (rappel de la notation) -->
+  <g transform="translate(178,26)">
+    <path class="gd-success" d="M14 0 L18 10 L29 10 L20 17 L23 28 L14 21 L5 28 L8 17 L-1 10 L10 10 Z"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="196" y="100" class="gd-text" font-size="52">GameDraw</text>
+  <text x="198" y="130" class="gd-sub" font-size="18">Tirage au sort de jeux video</text>
+</svg>

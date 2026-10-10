@@ -1,0 +1,34 @@
+# Dependances / builds reconstructibles
+node_modules/
+dist/
+.vite/
+.svelte-kit/
+coverage/
+src-tauri/target/
+target/
+cargo-target/
+Livrables/
+
+# DEV-HUB local / caches / temporaires
+.devhub-local/
+.cache/
+.tmp/
+tmp/
+logs/
+*.log
+*.tmp
+*.bak
+
+# Secrets locaux - ne jamais empaqueter
+.env
+.env.*
+!.env.example
+
+# Donnees persistantes locales au workspace
+# Conservees par DEV-HUB mais exclues des packages de release.
+data/
+
+# Divers
+.DS_Store
+Thumbs.db
+src-tauri/gen/
