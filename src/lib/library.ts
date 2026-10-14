@@ -102,10 +102,10 @@ export function parseListeTexte(texte: string): LigneImport[] {
  * 5 statuts d'origine ; passer `config.statuts` pour reconnaître aussi les
  * statuts personnalisés déjà créés. */
 export function parseCsv(texte: string, statutsConnus: StatutDefinition[] = STATUTS_PAR_DEFAUT): LigneImport[] {
-  const lignes = diviserLignesCsv(texte);
+  const lignes = diviserLignesCsv(texte, detecterSeparateurCsv(texte));
   if (lignes.length === 0) return [];
 
-  const entete = lignes[0].map((c) => c.trim().toLowerCase());
+  const entete = lignes[0].map((c) => c.replace(/^\uFEFF/, "").trim().toLowerCase());
   const idxNom = entete.indexOf("nom");
   if (idxNom === -1) return [];
   const idxStatut = entete.indexOf("statut");
@@ -130,7 +130,25 @@ export function parseCsv(texte: string, statutsConnus: StatutDefinition[] = STAT
   return resultat;
 }
 
-function diviserLignesCsv(texte: string): string[][] {
+/** Détecte virgule ou point-virgule sur la première ligne hors guillemets.
+ * Les exports CSV d'Excel en français utilisent souvent « ; ». */
+function detecterSeparateurCsv(texte: string): "," | ";" {
+  let dansGuillemets = false;
+  let virgules = 0;
+  let pointsVirgules = 0;
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte[i];
+    if (c === '"') {
+      if (dansGuillemets && texte[i + 1] === '"') { i++; continue; }
+      dansGuillemets = !dansGuillemets;
+    } else if (!dansGuillemets && (c === "\r" || c === "\n")) break;
+    else if (!dansGuillemets && c === ",") virgules++;
+    else if (!dansGuillemets && c === ";") pointsVirgules++;
+  }
+  return pointsVirgules > virgules ? ";" : ",";
+}
+
+function diviserLignesCsv(texte: string, separateur: "," | ";" = ","): string[][] {
   const lignes: string[][] = [];
   let ligne: string[] = [];
   let champ = "";
@@ -151,7 +169,7 @@ function diviserLignesCsv(texte: string): string[][] {
       }
     } else if (c === '"') {
       dansGuillemets = true;
-    } else if (c === ",") {
+    } else if (c === separateur) {
       ligne.push(champ);
       champ = "";
     } else if (c === "\n" || c === "\r") {

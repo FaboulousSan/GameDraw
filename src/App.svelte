@@ -1,10 +1,10 @@
 <script lang="ts">
+  import CoverImage from "./lib/CoverImage.svelte";
   import { onMount } from "svelte";
   import { spring } from "svelte/motion";
   import { fade, fly } from "svelte/transition";
   import { jouerSon } from "./lib/sons";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import MenuContextuel from "./lib/MenuContextuel.svelte";
   import type { ActionMenu } from "./lib/menu-contextuel";
   import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -810,7 +810,7 @@
             <!-- Jaquette du jeu tiré (v27) — cliquable pour ouvrir la fiche,
                  puisque c'est le geste naturel qu'on tente en la voyant. -->
             <button class="cover-resultat" onclick={() => (jeuOuvertId = jeuTire.id)} title={tr(config.langue, "Ouvrir la fiche", "Open game details")}>
-              <img src={convertFileSrc(jeuTire.cover)} alt={jeuTire.nom} />
+              <CoverImage path={jeuTire.cover} alt={jeuTire.nom} variant="result" />
             </button>
           {/if}
           <p class="nom-jeu">{jeuTire.nom}</p>
@@ -1260,7 +1260,7 @@
   .cover-resultat:hover {
     transform: scale(1.04);
   }
-  .cover-resultat img {
+  .cover-resultat :global(.gamedraw-cover-image) {
     max-height: 150px;
     max-width: 110px;
     object-fit: cover;

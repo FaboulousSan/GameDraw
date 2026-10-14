@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/gamedraw-logo.svg" alt="GameDraw" width="150" />
 
-# 🎲 GameDraw 1.0.3
+# 🎲 GameDraw 1.0.4
 
 **Tu as des jeux. Beaucoup de jeux. GameDraw t'aide à choisir lequel lancer.**
 
@@ -156,7 +156,21 @@ Baldur's Gate 3,Non commencé,"RPG,coop","RPG narratif","Un jour. Probablement."
 
 👉 Exemple complet : [`docs/examples/exemple-jeux.csv`](docs/examples/exemple-jeux.csv)
 
-Les statuts intégrés reconnus par défaut sont notamment **Non commencé**, **En cours**, **En pause**, **Terminé** et **Abandonné**. Les colonnes absentes ne bloquent pas l'import. **Utilise des virgules** comme séparateur CSV : les fichiers séparés par des points-virgules (`;`) ne sont pas pris en charge par le parseur actuel.
+Les statuts intégrés reconnus par défaut sont notamment **Non commencé**, **En cours**, **En pause**, **Terminé** et **Abandonné**. Les colonnes absentes ne bloquent pas l'import. **Virgules ou points-virgules acceptés :** GameDraw 1.0.4 reconnaît aussi les CSV exportés par Excel en français (avec éventuel BOM UTF-8).
+
+### ✨ Nouveauté 1.0.4 — les CSV d’Excel en français
+
+Tu as exporté un fichier depuis Excel et toutes tes colonnes sont séparées par des `;` ? Bonne nouvelle : **GameDraw reconnaît maintenant automatiquement `;` ou `,`**. Les guillemets sont pris en charge, même lorsque le nom ou les tags contiennent des séparateurs.
+
+```csv
+Nom;Statut;Tags
+"Super Mario Odyssey";En cours;"Switch 1, Mario"
+"Celeste";Non commencé;"plateforme;indé"
+```
+
+Le parcours ne change pas : **Bibliothèque → PC/Switch → Importer → Liste / CSV**.
+
+Les images de jaquettes continuent de se gérer depuis la fiche d'un jeu : **Modifier → Choisir un fichier**, ou via Steam/RAWG/SteamGridDB. En cas d'image introuvable, une vignette de remplacement s'affiche au lieu d'une image cassée.
 
 ## 🎁 Packs de jeux prêts à importer
 
@@ -196,13 +210,13 @@ GameDraw existe sous trois formes.
 
 | Version | Fichier | Idéal pour |
 |---|---|---|
-| 🧙 **Installateur Windows** | `GameDraw_1.0.3_x64-setup.exe` | Installation classique et simple |
+| 🧙 **Installateur Windows** | `GameDraw_1.0.4_x64-setup.exe` | Installation classique et simple |
 | 🏢 **MSI** | `GameDraw_1.0.3_x64_en-US.msi` | Installation administrée / Windows Installer |
 | 🧳 **Portable** | `Portable\GameDraw.exe` | Lancer GameDraw sans installation |
 
 ### 🧙 Installateur classique
 
-1. Lance `GameDraw_1.0.3_x64-setup.exe`.
+1. Lance `GameDraw_1.0.4_x64-setup.exe`.
 2. Suis l'assistant Windows.
 3. Lance **GameDraw**.
 4. Essaie de ne pas passer 25 minutes à choisir ton thème avant ton premier tirage.
@@ -409,3 +423,15 @@ Pour un **raccourci du Bureau**, clic droit → **Propriétés → Changer d’i
 Windows met les icônes en cache, notamment dans la barre des tâches. Si tu vois encore l'ancienne image après installation d'une nouvelle version, **ferme GameDraw**, retire l'ancien raccourci épinglé si nécessaire et épingle le nouveau. Cela n'affecte ni ta bibliothèque ni tes sauvegardes.
 
 La nouvelle icône GameDraw privilégie **la lisibilité** : dessin plus simple en 16/20/24/32 px pour la barre des tâches, rendu détaillé en 48/64/128/256 px pour les grandes icônes. Une icône 4K miniature n'a pas de super-pouvoirs : chaque pixel doit avoir une utilité.
+
+
+### 🖼️ Une jaquette refuse de s'afficher ?
+
+Dans **Bibliothèque → sélectionne le jeu → Modifier (crayon)**, tu peux désormais :
+
+- cliquer sur **Choisir un fichier** pour utiliser une image JPEG, PNG, WEBP ou GIF ;
+- chercher une jaquette avec **Steam** (sans clé), **RAWG** ou **SteamGridDB** (clé API requise selon le service) ;
+- coller l'adresse directe d'une image puis cliquer sur **Appliquer**.
+
+GameDraw enregistre la jaquette **sur ton PC** : tu n'as pas à retrouver le fichier à chaque lancement.
+Si un service renvoie un code 401 ou une page à la place d'une image, l'application l'explique au lieu d'afficher une mystérieuse icône cassée. Et si le fichier local n'existe plus, elle montre une vignette de remplacement.

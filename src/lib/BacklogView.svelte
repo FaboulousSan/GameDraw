@@ -1,6 +1,6 @@
 <script lang="ts">
+  import CoverImage from "./CoverImage.svelte";
   import { Heart, ListChecks, Clock, CalendarDays, Eye, EyeOff, Award } from "@lucide/svelte";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import type { AppConfig, Game, GameLibrary, Historique, Platform } from "./types";
   import { tempsCumuleJeu, dernierTirageJeu, formaterMinutes } from "./stats";
   import { trouverStatut } from "./statuts";
@@ -95,11 +95,7 @@
         {@const statutJeu = trouverStatut(config.statuts, jeu.statut)}
         <button class="carte-backlog" onclick={() => onOuvrirJeu(jeu.id)}>
           <div class="cover-backlog">
-            {#if jeu.cover}
-              <img src={convertFileSrc(jeu.cover)} alt={jeu.nom} />
-            {:else}
-              <span class="cover-placeholder">{jeu.nom.slice(0, 1).toUpperCase()}</span>
-            {/if}
+            <CoverImage path={jeu.cover} alt={jeu.nom} />
             <span
               class="badge-statut"
               style="background: {statutJeu.couleur}; --couleur-halo: {statutJeu.couleur};"
@@ -265,21 +261,15 @@
     justify-content: center;
     margin-bottom: 6px;
   }
-  .cover-backlog img {
+  .cover-backlog :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top center;
     transition: transform 0.35s ease;
   }
-  .carte-backlog:hover .cover-backlog img {
+  .carte-backlog:hover .cover-backlog :global(.gamedraw-cover-image) {
     transform: scale(1.06);
-  }
-  .cover-placeholder {
-    font-family: var(--font-display);
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--muted);
   }
 
   .badge-statut {

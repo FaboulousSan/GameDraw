@@ -200,3 +200,22 @@ describe("défis personnalisés", () => {
     expect(r.jeux[0].defis[0].texte).toBe("Défi 2");
   });
 });
+
+
+describe("import CSV 1.0.4 — Excel français", () => {
+  it("reconnaît le BOM UTF-8 et le point-virgule", () => {
+    const jeux = parseCsv('\uFEFFNom;Statut;Tags\r\n"Super Mario Odyssey";En cours;"Switch 1, Mario"\r\n');
+    expect(jeux).toHaveLength(1);
+    expect(jeux[0].nom).toBe("Super Mario Odyssey");
+    expect(jeux[0].tags).toBe("Switch 1, Mario");
+  });
+  it("conserve les champs entre guillemets avec séparateur intégré", () => {
+    const jeux = parseCsv('Nom;Description\n"Celeste";"Plateforme; difficulté progressive"');
+    expect(jeux).toHaveLength(1);
+    expect(jeux[0].description).toBe("Plateforme; difficulté progressive");
+  });
+  it("préserve le CSV à virgules classique", () => {
+    const jeux = parseCsv('Nom,Tags\n"Hades","roguelike,action"');
+    expect(jeux[0].tags).toBe("roguelike,action");
+  });
+});

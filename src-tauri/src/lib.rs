@@ -1,4 +1,5 @@
 mod data;
+mod cover_utils;
 
 use data::{AppConfig, Badges, DrawSession, GameLibrary, Historique, Platform};
 use std::path::PathBuf;
@@ -283,10 +284,13 @@ struct SgdbGridRaw {
 #[tauri::command]
 async fn steamgriddb_search(app: AppHandle, api_key: String, query: String) -> Result<Vec<RawgGame>, String> {
     if api_key.trim().is_empty() {
-        return Err("Clé API SteamGridDB manquante.".into());
+        return Err("Clé API SteamGridDB manquante (Options → Connexion).".into());
     }
+    let api_key = api_key.trim().to_owned();
     let result: Result<Vec<RawgGame>, String> = async {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build().map_err(|e| format!("Client SteamGridDB : {e}"))?;
         let search_url = format!(
             "https://www.steamgriddb.com/api/v2/search/autocomplete/{}",
             data::url_encode(&query)
@@ -297,8 +301,14 @@ async fn steamgriddb_search(app: AppHandle, api_key: String, query: String) -> R
             .send()
             .await
             .map_err(|e| format!("requête SteamGridDB : {e}"))?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err("SteamGridDB HTTP 401 : clé API invalide ou révoquée. Vérifie Options → Connexion (ne colle pas ta clé Steam Web API).".into());
+        }
+        if resp.status() == reqwest::StatusCode::FORBIDDEN {
+            return Err("SteamGridDB HTTP 403 : accès refusé par le service pour cette clé API.".into());
+        }
         if !resp.status().is_success() {
-            return Err(format!("SteamGridDB a répondu {} (vérifie la clé API)", resp.status()));
+            return Err(format!("SteamGridDB a répondu HTTP {}.", resp.status()));
         }
         let search_data: SgdbSearchResponse = resp.json().await.map_err(|e| format!("réponse SteamGridDB : {e}"))?;
 
@@ -322,44 +332,73 @@ async fn steamgriddb_search(app: AppHandle, api_key: String, query: String) -> R
     logged(&app, "steamgriddb_search", result)
 }
 
-/// Télécharge une jaquette RAWG et la copie dans le dossier de données —
-/// jamais juste l'URL distante gardée telle quelle (qui peut disparaître).
+/// Télécharge et valide une jaquette. La réponse doit être une vraie image.
+/// Les chemins générés changent à chaque mise à jour pour contourner le cache WebView2.
 #[tauri::command]
 async fn download_cover(app: AppHandle, platform_id: String, game_id: String, url: String) -> Result<String, String> {
     let result: Result<String, String> = async {
-        let resp = reqwest::get(&url).await.map_err(|e| format!("téléchargement jaquette : {e}"))?;
-        if !resp.status().is_success() {
-            return Err(format!("téléchargement a échoué ({})", resp.status()));
+        cover_utils::safe_id(&platform_id)?;
+        cover_utils::safe_id(&game_id)?;
+        let parsed = reqwest::Url::parse(&url).map_err(|e| format!("Adresse de jaquette incorrecte: {e}"))?;
+        if !["https", "http"].contains(&parsed.scheme()) {
+            return Err("Les jaquettes distantes doivent utiliser HTTP ou HTTPS.".into());
         }
-        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-        let ext = url.rsplit('.').next().filter(|e| e.len() <= 4).unwrap_or("jpg");
+        if parsed.host_str().is_none() || !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err("L'adresse de jaquette n'est pas autorisée.".into());
+        }
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(25))
+            .build().map_err(|e| format!("Client HTTP: {e}"))?;
+        let resp = client.get(parsed).send().await.map_err(|e| format!("Téléchargement de jaquette impossible: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("Image non accessible (HTTP {}). Essaie une autre source ou un fichier local.", resp.status()));
+        }
+        if resp.content_length().is_some_and(|size| size > cover_utils::MAX_COVER_BYTES as u64) {
+            return Err("Jaquette trop volumineuse (limite 15 Mio).".into());
+        }
+        let bytes = resp.bytes().await.map_err(|e| format!("Lecture de l'image: {e}"))?;
         let dir = data_dir(&app)?;
         let images = data::images_dir(&dir, &platform_id);
-        std::fs::create_dir_all(&images).map_err(|e| format!("mkdir {:?}: {e}", images))?;
-        let path = images.join(format!("{game_id}.{ext}"));
-        std::fs::write(&path, &bytes).map_err(|e| format!("écriture {:?}: {e}", path))?;
-        Ok(path.to_string_lossy().to_string())
-    }
-    .await;
+        cover_utils::store_image(&images, &game_id, &bytes)
+    }.await;
     logged(&app, "download_cover", result)
 }
 
-/// Copie un fichier local choisi par l'utilisateur (sélecteur de fichier)
-/// dans le dossier de données — même logique que download_cover, mais depuis
-/// disque plutôt que depuis le réseau.
+/// Import local : même validation de format, mêmes chemins et même politique de cache.
 #[tauri::command]
 fn save_local_cover(app: AppHandle, platform_id: String, game_id: String, source_path: String) -> Result<String, String> {
     let result: Result<String, String> = (|| {
+        cover_utils::safe_id(&platform_id)?;
+        cover_utils::safe_id(&game_id)?;
         let source = std::path::Path::new(&source_path);
-        let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+        let size = std::fs::metadata(source).map_err(|e| format!("Fichier inaccessible: {e}"))?.len();
+        if size > cover_utils::MAX_COVER_BYTES as u64 { return Err("Image trop volumineuse (limite 15 Mio).".into()); }
+        let bytes = std::fs::read(source).map_err(|e| format!("Lecture de l'image locale: {e}"))?;
         let dir = data_dir(&app)?;
-        let images = data::images_dir(&dir, &platform_id);
-        std::fs::create_dir_all(&images).map_err(|e| format!("mkdir {:?}: {e}", images))?;
-        let dest = images.join(format!("{game_id}.{ext}"));
-        std::fs::copy(source, &dest).map_err(|e| format!("copie {:?} -> {:?}: {e}", source, dest))?;
-        Ok(dest.to_string_lossy().to_string())
+        cover_utils::store_image(&data::images_dir(&dir, &platform_id), &game_id, &bytes)
     })();
     logged(&app, "save_local_cover", result)
+}
+
+/// Secours ciblé lorsque l'asset protocol WebView2 n'affiche pas un ancien chemin.
+/// N'accepte que des fichiers contenus dans le dossier GameDraw ; aucun chemin arbitraire.
+#[tauri::command]
+fn read_cover_data_url(app: AppHandle, path: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let result: Result<String, String> = (|| {
+        let dir = std::fs::canonicalize(data_dir(&app)?).map_err(|e| format!("Données GameDraw introuvables: {e}"))?;
+        let file = std::fs::canonicalize(&path).map_err(|e| format!("Jaquette introuvable: {e}"))?;
+        if !file.starts_with(&dir.join("images")) {
+            return Err("Accès refusé : la jaquette doit appartenir à GameDraw.".into());
+        }
+        if std::fs::metadata(&file).map_err(|e| e.to_string())?.len() > cover_utils::MAX_COVER_BYTES as u64 {
+            return Err("Jaquette trop volumineuse.".into());
+        }
+        let bytes = std::fs::read(&file).map_err(|e| format!("Lecture jaquette: {e}"))?;
+        let (_, mime) = cover_utils::format_image(&bytes)?;
+        Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+    })();
+    logged(&app, "read_cover_data_url", result)
 }
 
 /// Lit un fichier texte choisi par l'utilisateur (import CSV) — en Rust
@@ -369,7 +408,19 @@ fn save_local_cover(app: AppHandle, platform_id: String, game_id: String, source
 /// dialogue natif.
 #[tauri::command]
 fn read_text_file(app: AppHandle, path: String) -> Result<String, String> {
-    logged(&app, "read_text_file", std::fs::read_to_string(&path).map_err(|e| format!("lecture {path}: {e}")))
+    const MAX_IMPORT_TEXT_BYTES: u64 = 5 * 1024 * 1024;
+    let result = (|| {
+        let taille = std::fs::metadata(&path)
+            .map_err(|e| format!("Fichier d'import inaccessible : {e}"))?.len();
+        if taille > MAX_IMPORT_TEXT_BYTES {
+            return Err("Liste TXT/CSV trop volumineuse (maximum 5 Mio).".to_string());
+        }
+        // Les fichiers Excel/Bloc-notes peuvent contenir un BOM UTF-8.
+        let contenu = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Lecture TXT/CSV impossible (UTF-8 requis) : {e}"))?;
+        Ok(contenu.trim_start_matches('\u{feff}').to_string())
+    })();
+    logged(&app, "read_text_file", result)
 }
 
 // --- Steam (import de bibliothèque) — Phase 5 -------------------------------
@@ -817,6 +868,7 @@ pub fn run() {
             rawg_search,
             download_cover,
             save_local_cover,
+            read_cover_data_url,
             read_text_file,
             steam_owned_games,
             export_library_zip,

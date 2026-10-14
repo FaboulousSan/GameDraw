@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CoverImage from "./CoverImage.svelte";
   import { X, Search, Loader2 } from "@lucide/svelte";
   import { api, type RawgGame } from "./api";
   import { langueApp, tr } from "./i18n";
@@ -67,7 +68,7 @@
       <div class="resultats">
         {#each resultats as r (r.id)}
           <button class="resultat" onclick={() => choisir(r)}>
-            {#if r.coverUrl}<img src={r.coverUrl} alt={r.nom} />{:else}<span class="pas-de-jaquette">?</span>{/if}
+            <CoverImage path={r.coverUrl} alt={r.nom} variant="preview" />
             <span>{r.nom}</span>
           </button>
         {/each}
@@ -183,22 +184,11 @@
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
-  .resultat img {
+  .resultat :global(.gamedraw-cover-image) {
     width: 32px;
     height: 44px;
     object-fit: cover;
     border-radius: 4px;
-    flex-shrink: 0;
-  }
-  .pas-de-jaquette {
-    width: 32px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--input);
-    border-radius: 4px;
-    color: var(--muted);
     flex-shrink: 0;
   }
 

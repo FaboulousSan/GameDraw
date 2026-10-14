@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { X, FileUp, ClipboardList, Check } from "@lucide/svelte";
   import { fade, scale } from "svelte/transition";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -23,19 +23,24 @@
   let erreur = $state<string | null>(null);
   let dragOver = $state(false);
   let succes = $state(false);
-  let unlisten: (() => void) | null = null;
+  let lectureEnCours = $state(false);
   let dernierTraitement = 0;
+  let fermetureProgrammee: ReturnType<typeof setTimeout> | null = null;
 
   // Vrai glisser-déposer natif (chemins de fichiers réels, pas juste l'API
   // HTML5 qui ne donne pas le chemin dans un webview). Un bug connu de
   // Tauri déclenche parfois l'événement "drop" deux fois pour un seul
   // dépôt — le garde-fou de 500ms ci-dessous l'empêche de traiter deux fois.
-  onMount(async () => {
-    unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void getCurrentWebview().onDragDropEvent((event) => {
+      if (disposed) return;
       if (event.payload.type === "over") {
         dragOver = true;
       } else if (event.payload.type === "drop") {
         dragOver = false;
+        if (lectureEnCours) return;
         const maintenant = Date.now();
         if (maintenant - dernierTraitement < 500) return;
         dernierTraitement = maintenant;
@@ -44,9 +49,19 @@
       } else {
         dragOver = false;
       }
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    }).catch(() => {
+      // Le bouton de sélection de fichier reste disponible.
+      if (!disposed) dragOver = false;
     });
+    return () => {
+      disposed = true;
+      unlisten?.();
+      if (fermetureProgrammee) clearTimeout(fermetureProgrammee);
+    };
   });
-  onDestroy(() => unlisten?.());
 
   function lignesDepuisFichier(chemin: string, contenu: string): LigneImport[] | null {
     const ext = chemin.split(".").pop()?.toLowerCase();
@@ -62,6 +77,8 @@
   }
 
   async function traiterFichier(chemin: string) {
+    if (lectureEnCours || succes) return;
+    lectureEnCours = true;
     erreur = null;
     try {
       const contenu = await api.readTextFile(chemin);
@@ -78,13 +95,20 @@
       confirmerImport(lignes);
     } catch (e) {
       erreur = String(e);
+    } finally {
+      lectureEnCours = false;
     }
   }
 
   async function choisirFichier() {
-    const selection = await open({ multiple: false, filters: [{ name: "Liste de jeux", extensions: ["csv", "txt"] }] });
-    if (!selection || Array.isArray(selection)) return;
-    await traiterFichier(selection);
+    if (lectureEnCours || succes) return;
+    try {
+      const selection = await open({ multiple: false, filters: [{ name: "Liste de jeux", extensions: ["csv", "txt"] }] });
+      if (!selection || Array.isArray(selection)) return;
+      await traiterFichier(selection);
+    } catch (e) {
+      erreur = `Impossible d'ouvrir le sélecteur de fichier : ${String(e)}`;
+    }
   }
 
   function importerTexteColle() {
@@ -100,7 +124,7 @@
     erreur = null;
     succes = true;
     onImport(lignes);
-    setTimeout(onClose, 700); // laisse le temps de voir la coche de succès
+    fermetureProgrammee = setTimeout(onClose, 700); // laisse le temps de voir la coche de succès
   }
 </script>
 
@@ -129,9 +153,9 @@
 
       <div class="separateur"><span>{tr($langueApp, "ou", "or")}</span></div>
 
-      <button class="zone-depot" class:dragover={dragOver} onclick={choisirFichier}>
+      <button class="zone-depot" class:dragover={dragOver} onclick={choisirFichier} disabled={lectureEnCours}>
         <FileUp size={28} strokeWidth={1.8} />
-        <p class="zone-titre">{tr($langueApp, "Glisse un fichier ici", "Drop a file here")}</p>
+        <p class="zone-titre">{lectureEnCours ? tr($langueApp, "Lecture du fichier…", "Reading file…") : tr($langueApp, "Glisse un fichier ici", "Drop a file here")}</p>
         <p class="zone-sous-titre">{tr($langueApp, ".csv ou .txt — ou clique pour choisir", ".csv or .txt — or click to choose")}</p>
       </button>
       <p class="aide">

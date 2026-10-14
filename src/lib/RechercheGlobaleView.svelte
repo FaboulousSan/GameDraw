@@ -1,6 +1,6 @@
 <script lang="ts">
+  import CoverImage from "./CoverImage.svelte";
   import { Search, Loader2 } from "@lucide/svelte";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import type { Platform } from "./types";
   import { api } from "./api";
   import { filtrerJeux } from "./library";
@@ -85,11 +85,7 @@
       {#each resultats as r (r.platformId + r.gameId)}
         <button class="ligne-resultat glass" onclick={() => onOuvrirJeu(r.platformId, r.gameId)}>
           <div class="cover-mini">
-            {#if r.cover}
-              <img src={convertFileSrc(r.cover)} alt={r.nom} />
-            {:else}
-              <span class="cover-placeholder">{r.nom.slice(0, 1).toUpperCase()}</span>
-            {/if}
+            <CoverImage path={r.cover} alt={r.nom} />
           </div>
           <span class="nom-resultat">{r.nom}</span>
           <span class="etiquette-plateforme">{r.platformNom}</span>
@@ -164,17 +160,11 @@
     align-items: center;
     justify-content: center;
   }
-  .cover-mini img {
+  .cover-mini :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top center;
-  }
-  .cover-placeholder {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.9rem;
-    color: var(--muted);
   }
 
   .nom-resultat {

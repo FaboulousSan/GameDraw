@@ -1,9 +1,9 @@
 <script lang="ts">
+  import CoverImage from "./CoverImage.svelte";
   import { Trash2, X, FolderOpen, Search, Loader2, Heart, Plus, ListChecks, SquareCheck, Square, Award, ExternalLink, Pencil, Check, Download } from "@lucide/svelte";
   import { scale, fade, fly } from "svelte/transition";
   import { open } from "@tauri-apps/plugin-dialog";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import { api, type RawgGame } from "./api";
   import type { AppConfig, Game, StatutJeu } from "./types";
   import { ICONE_NOTATION_COMPOSANTS, ICONE_NOTATION_LABELS, ICONE_NOTATION_ORDER } from "./icones-notation";
@@ -74,12 +74,12 @@
   let rawgEnCours = $state(false);
   let telechargementEnCours = $state(false);
   let erreurRawg = $state<string | null>(null);
+  let messageCover = $state<string | null>(null);
   let pulseNote = $state(false);
   let pulseTimeout: ReturnType<typeof setTimeout> | null = null;
   let nouveauDefi = $state("");
   let urlCollee = $state("");
 
-  const coverSrc = $derived(game.cover ? convertFileSrc(game.cover) : null);
 
   function majStatut(statut: StatutJeu) {
     onSave({ statut });
@@ -106,16 +106,23 @@
   }
 
   async function choisirFichierLocal() {
-    const selection = await open({
-      multiple: false,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
-    });
-    if (!selection || Array.isArray(selection)) return;
+    if (telechargementEnCours) return;
+    erreurRawg = null;
+    messageCover = null;
     try {
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "gif"] }],
+      });
+      if (!selection || Array.isArray(selection)) return;
+      telechargementEnCours = true;
       const chemin = await api.saveLocalCover(platformId, game.id, selection);
       onSave({ cover: chemin });
+      messageCover = tr(config.langue, "Jaquette locale enregistrée.", "Local cover saved.");
     } catch (e) {
-      erreurRawg = String(e);
+      erreurRawg = `${tr(config.langue, "Impossible d'importer cette image", "Cannot import this image")} : ${String(e)}`;
+    } finally {
+      telechargementEnCours = false;
     }
   }
 
@@ -151,6 +158,7 @@
     try {
       const chemin = await api.downloadCover(platformId, game.id, url);
       onSave({ cover: chemin });
+      messageCover = tr(config.langue, "Jaquette téléchargée et enregistrée.", "Cover downloaded and saved.");
       urlCollee = "";
     } catch (e) {
       erreurRawg = `${tr(config.langue, "Téléchargement impossible", "Download failed")} : ${e}`;
@@ -187,6 +195,7 @@
     try {
       const chemin = await api.downloadCover(platformId, game.id, resultat.coverUrl);
       onSave({ cover: chemin });
+      messageCover = tr(config.langue, "Jaquette téléchargée et enregistrée.", "Cover downloaded and saved.");
       resultatsRawg = null;
     } catch (e) {
       erreurRawg = String(e);
@@ -226,14 +235,10 @@
     <div class="colonnes">
       <div class="colonne-cover" in:fly={{ x: -16, duration: 240, delay: 40 }}>
         <div class="cover-cadre">
-          {#if coverSrc}
-            <img src={coverSrc} alt={game.nom} />
-          {:else}
-            <div class="cover-placeholder">{game.nom.slice(0, 1).toUpperCase()}</div>
-          {/if}
+          <CoverImage path={game.cover} alt={game.nom} variant="detail" />
         </div>
         {#if mode === "edition"}
-        <button class="action-cover" onclick={choisirFichierLocal}>
+        <button class="action-cover" onclick={choisirFichierLocal} disabled={telechargementEnCours}>
           <FolderOpen size={15} strokeWidth={2.2} />
           {tr(config.langue, "Choisir un fichier", "Choose a file")}
         </button>
@@ -286,7 +291,7 @@
               <div class="resultats-rawg">
                 {#each resultatsRawg as r (r.id)}
                   <button class="resultat" onclick={() => utiliserResultat(r)} disabled={!r.coverUrl || telechargementEnCours}>
-                    {#if r.coverUrl}<img src={r.coverUrl} alt={r.nom} />{/if}
+                    {#if r.coverUrl}<CoverImage path={r.coverUrl} alt={r.nom} variant="preview" />{/if}
                     <span>{r.nom}</span>
                   </button>
                 {/each}
@@ -298,7 +303,8 @@
           </div>
         {/if}
         {/if}
-        {#if erreurRawg}<p class="erreur-rawg">{erreurRawg}</p>{/if}
+        {#if messageCover}<p class="message-cover" role="status">{messageCover}</p>{/if}
+        {#if erreurRawg}<p class="erreur-rawg" role="alert">{erreurRawg}</p>{/if}
         {/if}
       </div>
 
@@ -579,26 +585,15 @@
     background: var(--input);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
   }
-  .cover-cadre img {
+  .cover-cadre :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top center;
     transition: transform 0.35s ease;
   }
-  .cover-cadre:hover img {
+  .cover-cadre:hover :global(.gamedraw-cover-image) {
     transform: scale(1.07);
-  }
-  .cover-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--muted);
   }
 
   .coller-url {
@@ -717,7 +712,7 @@
   .resultat:hover:not(:disabled) {
     background: color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .resultat img {
+  .resultat :global(.gamedraw-cover-image) {
     width: 32px;
     height: 32px;
     object-fit: cover;
@@ -730,6 +725,7 @@
     margin: 0;
   }
 
+  .message-cover { color: var(--success); font-size: 0.78rem; margin: 0; }
   .erreur-rawg {
     color: var(--danger);
     font-size: 0.78rem;

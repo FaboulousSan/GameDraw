@@ -45,6 +45,7 @@ export const api = {
     invoke<string>("download_cover", { platformId, gameId, url }),
   /** Copie un fichier local choisi via le sélecteur de fichier dans le
    * dossier de données ; retourne le chemin copié. */
+  readCoverDataUrl: (path: string) => invoke<string>("read_cover_data_url", { path }),
   saveLocalCover: (platformId: string, gameId: string, sourcePath: string) =>
     invoke<string>("save_local_cover", { platformId, gameId, sourcePath }),
 

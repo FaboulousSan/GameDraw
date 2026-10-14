@@ -1,8 +1,8 @@
 <script lang="ts">
+  import CoverImage from "./CoverImage.svelte";
   import { scale } from "svelte/transition";
   import { Plus, Search, LibraryBig, Gamepad2, Upload, Download, SquareCheck, Square, Trash2, X, Heart, Award, Star, Trophy, RotateCcw } from "@lucide/svelte";
   import { ICONE_NOTATION_COMPOSANTS } from "./icones-notation";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import { save, open } from "@tauri-apps/plugin-dialog";
   import type { AppConfig, Game, GameLibrary, Platform, StatutJeu } from "./types";
   import {
@@ -98,9 +98,9 @@
         ...bibliothequeAvecJeu,
         jeux: bibliothequeAvecJeu.jeux.map((j) => (j.id === nouveauJeu.id ? { ...j, cover: chemin } : j)),
       });
-    } catch {
-      // La jaquette est un bonus — le jeu est déjà ajouté, une erreur de
-      // téléchargement ne doit pas empêcher le reste de continuer.
+    } catch (e) {
+      // Conserver le jeu, mais expliquer pourquoi la jaquette n'a pas été ajoutée.
+      afficherMessageImport(`${tr(config.langue, "Jeu ajouté, mais jaquette non téléchargée", "Game added, but cover could not be downloaded")} : ${String(e)}`);
     }
   }
 
@@ -384,11 +384,7 @@
             </span>
           {/if}
           <div class="cover-mini">
-            {#if jeu.cover}
-              <img src={convertFileSrc(jeu.cover)} alt={jeu.nom} />
-            {:else}
-              <span class="cover-mini-placeholder">{jeu.nom.slice(0, 1).toUpperCase()}</span>
-            {/if}
+            <CoverImage path={jeu.cover} alt={jeu.nom} />
             {#if jeu.envieDeFaire || jeu.coupDeCoeur || jeu.complete100}
               <div class="badges-coeur">
                 {#if jeu.coupDeCoeur}<Heart size={13} strokeWidth={2} fill="var(--danger)" color="var(--danger)" />{/if}
@@ -709,21 +705,15 @@
     align-items: center;
     justify-content: center;
   }
-  .cover-mini img {
+  .cover-mini :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top center;
     transition: transform 0.35s ease;
   }
-  .carte-jeu:hover .cover-mini img {
+  .carte-jeu:hover .cover-mini :global(.gamedraw-cover-image) {
     transform: scale(1.06);
-  }
-  .cover-mini-placeholder {
-    font-family: var(--font-display);
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--muted);
   }
 
   .badges-coeur {
