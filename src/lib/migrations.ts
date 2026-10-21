@@ -336,6 +336,17 @@ export function migrate<T>(kind: keyof typeof MIGRATIONS, data: unknown): T {
     version++;
   }
 
+  // GameDraw 1.0.5 : nouveaux champs facultatifs ; schéma global inchangé.
+  // Appliquer sur toutes les configs (y compris celles déjà au dernier schéma).
+  if (kind === "config") {
+    // Préserver les préférences déjà enregistrées : activer automatiquement
+    // seulement pour les nouvelles installations, pas lors d'une migration.
+    d.updatesAutoCheck ??= false;
+    // Un fichier config.json existant ne vaut PAS consentement. Poser une seule fois la question.
+    d.updatesConsentAnswered ??= false;
+    d.updatesGithubRepo = "FaboulousSan/GameDraw";
+    d.updatesChannel ??= "stable";
+  }
   d.schemaVersion = SCHEMA_VERSION;
   return d as T;
 }

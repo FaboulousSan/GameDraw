@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Dices, Link2, Palette, Play, Trash2, Plus, X, Tags, Eye, EyeOff, Database, Download, Upload, Loader2, Info, Languages } from "@lucide/svelte";
+  import { Dices, Link2, Palette, Play, Trash2, Plus, X, Tags, Eye, EyeOff, Database, Download, Upload, Loader2, Info, Languages, ShieldAlert, CheckCircle2, DoorOpen } from "@lucide/svelte";
   import { save, open } from "@tauri-apps/plugin-dialog";
   import { jouerSon, SON_LABELS, SON_ORDER } from "./sons";
   import { ONGLETS_MASQUABLES, BLOCS_RECAP, STYLES_CHRONO, type OngletMasquable } from "./types";
@@ -9,7 +9,10 @@
   import { EFFECT_FAMILLES, REVEAL_EFFECT_LABELS, revealEffects } from "./effects/effects";
   import { ajouterStatut, supprimerStatut, basculerVisibiliteStatut, modifierCouleurStatut } from "./statuts";
   import { api } from "./api";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { tr, labelStatut } from "./i18n";
+  import GithubUpdatesView from "./GithubUpdatesView.svelte";
+  import type { GithubRelease } from "./api";
   import { APP_NAME, APP_VERSION, APP_CREATOR, APP_COPYRIGHT, APP_COPYRIGHT_EN } from "./app-meta";
 
   let {
@@ -18,16 +21,50 @@
     confirmer,
     onConfigChange,
     onEffacerHistorique,
+    openUpdates = false,
+    discoveredUpdate = null,
   }: {
     config: AppConfig;
     historique: Historique;
     confirmer: (message: string) => Promise<boolean>;
     onConfigChange: (cfg: AppConfig) => void;
     onEffacerHistorique: () => void;
+    openUpdates?: boolean;
+    discoveredUpdate?: GithubRelease | null;
   } = $props();
 
-  type Categorie = "tirage" | "connexion" | "apparence" | "statuts" | "donnees" | "apropos";
-  let categorie = $state<Categorie>("tirage");
+  type Categorie = "tirage" | "connexion" | "apparence" | "statuts" | "donnees" | "misesajour" | "apropos";
+  // svelte-ignore state_referenced_locally
+  let categorie = $state<Categorie>(openUpdates ? "misesajour" : "tirage");
+  $effect(() => { if (openUpdates) categorie = "misesajour"; });
+  // HF5 : diagnostic SteamGridDB local à l'application, jamais une fenêtre web.
+  // svelte-ignore state_referenced_locally -- brouillon de clé modifiable avant sauvegarde (évite des écritures disque à chaque touche).
+  let steamGridDraft = $state(config.steamgriddbApiKey);
+  let steamGridTesting = $state(false);
+  let steamGridTestMessage = $state<string | null>(null);
+  let steamGridTestOk = $state(false);
+  let steamGridKeyVisible = $state(false);
+  async function testerSteamGridDB() {
+    if (steamGridTesting) return;
+    steamGridTestMessage = null;
+    steamGridTestOk = false;
+    const key = steamGridDraft.trim();
+    if (!key) {
+      steamGridTestMessage = tr(config.langue, "Aucune clé renseignée. Le mode manuel reste disponible dans la fiche.", "No key entered. Manual mode remains available in game details.");
+      return;
+    }
+    steamGridTesting = true;
+    try {
+      await api.steamgriddbGames(key, "Portal");
+      steamGridTestOk = true;
+      steamGridTestMessage = tr(config.langue, "Connexion API SteamGridDB opérationnelle.", "SteamGridDB API connection successful.");
+    } catch (e) {
+      steamGridTestMessage = `${tr(config.langue, "Connexion non validée", "Connection not verified")}: ${String(e)}`;
+    } finally {
+      steamGridTesting = false;
+    }
+  }
+
 
   let nouveauStatutLabel = $state("");
   let nouveauStatutCouleur = $state("#89B4FA");
@@ -39,6 +76,8 @@
   let confirmationSuppression = $state(false);
   let saisieSuppression = $state("");
   let suppressionEnCours = $state(false);
+  let suppressionTerminee = $state(false);
+  let erreurFermeture = $state("");
 
   function formaterObjectifLangue(o: ObjectifSession): string {
     if (config.langue === "fr") return formaterObjectif(o);
@@ -54,13 +93,25 @@
     messageDonnees = null;
     try {
       await api.effacerToutesDonnees();
-      messageDonnees = tr(config.langue, "Toutes les données ont été supprimées. Redémarre GameDraw pour repartir de zéro.", "All data has been deleted. Restart GameDraw to start fresh.");
+      messageDonnees = tr(config.langue,
+        "Boss final vaincu : la bibliothèque est repartie dans le néant ! Ferme GameDraw maintenant, puis relance-le pour repartir de zéro.",
+        "Final boss defeated: your library has vanished into the void! Close GameDraw now, then reopen it for a fresh start.");
+      suppressionTerminee = true;
       confirmationSuppression = false;
       saisieSuppression = "";
     } catch (e) {
       messageDonnees = `${tr(config.langue, "Échec de la suppression", "Deletion failed")} : ${e}`;
     } finally {
       suppressionEnCours = false;
+    }
+  }
+
+  async function fermerApresSuppression() {
+    erreurFermeture = "";
+    try {
+      await getCurrentWindow().close();
+    } catch (e) {
+      erreurFermeture = `${tr(config.langue, "Ferme l’application manuellement", "Close the app manually")}: ${String(e)}`;
     }
   }
   let motDePasseExport = $state("");
@@ -226,6 +277,10 @@
     <button class="item-sidebar" class:active={categorie === "donnees"} onclick={() => (categorie = "donnees")}>
       <Database size={16} strokeWidth={2.2} />
       {tr(config.langue, "Données", "Data")}
+    </button>
+    <button class="item-sidebar" class:active={categorie === "misesajour"} onclick={() => (categorie = "misesajour")}>
+      <Download size={16} strokeWidth={2.2} />
+      {tr(config.langue, "Mises à jour", "Updates")}
     </button>
     <button class="item-sidebar" class:active={categorie === "apropos"} onclick={() => (categorie = "apropos")}>
       <Info size={16} strokeWidth={2.2} />
@@ -428,13 +483,22 @@
         <p class="aide">{tr(config.langue, "Utilisées dans Bibliothèque → Importer → Depuis Steam.", "Used in Library → Import → From Steam.")}</p>
       </div>
       <div class="carte-reglage">
-        <p class="eyebrow">{tr(config.langue, "Clé API SteamGridDB (optionnelle)", "SteamGridDB API key (optional)")}</p>
-        <input type="text" placeholder="Clé API SteamGridDB" value={config.steamgriddbApiKey} onchange={(e) => onConfigChange({ ...config, steamgriddbApiKey: e.currentTarget.value })} />
-        <p class="aide">
-          En complément (pas en remplacement) du bouton "Chercher sur SteamGridDB" de la Fiche
-          du jeu, qui ouvre une fenêtre intégrée sans avoir besoin de clé. Renseigne une clé ici
-          pour obtenir en plus une recherche automatisée avec résultats affichés dans l'app.
-        </p>
+        <p class="eyebrow">{tr(config.langue, "SteamGridDB · clé API (facultative)", "SteamGridDB · API key (optional)")}</p>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type={steamGridKeyVisible ? "text" : "password"} placeholder={tr(config.langue,"Coller uniquement la clé personnelle", "Paste your personal key only")} bind:value={steamGridDraft} onchange={() => { steamGridTestMessage = null; onConfigChange({ ...config, steamgriddbApiKey: steamGridDraft.trim() }); }} autocomplete="off" spellcheck="false" />
+          <button class="btn-sgdb-action" type="button" onclick={() => (steamGridKeyVisible = !steamGridKeyVisible)} aria-label={steamGridKeyVisible ? tr(config.langue,"Masquer la clé", "Hide key") : tr(config.langue,"Afficher la clé", "Show key")}>
+            {#if steamGridKeyVisible}<EyeOff size={15}/>{:else}<Eye size={15}/>{/if}
+          </button>
+        </div>
+        <button class="btn-sgdb-action" onclick={testerSteamGridDB} disabled={steamGridTesting || !steamGridDraft.trim()}>
+          {#if steamGridTesting}<Loader2 size={15}/>{:else}<Link2 size={15}/>{/if}
+          {tr(config.langue, "Tester la connexion SteamGridDB", "Test SteamGridDB connection")}
+        </button>
+        {#if steamGridTestMessage}<p class="aide" role="status" style:color={steamGridTestOk ? "var(--success)" : "var(--danger)"}>{steamGridTestMessage}</p>{/if}
+        <p class="aide">{tr(config.langue,
+          "Avec clé : recherches intégrées, choix du jeu, galerie de jaquettes portrait/paysage/carré et aperçu. Sans clé : ouvre le site dans le navigateur puis importe une image locale ou une URL dans l'atelier. La clé Steam Web API ne convient pas.",
+          "With a key: in-app game search, portrait/landscape/square artwork galleries and previews. Without a key: browse the website, then import a local image or direct URL in the studio. A Steam Web API key will not work.")}</p>
+        <p class="aide">{tr(config.langue,"Récupérer une clé : steamgriddb.com/profile/preferences/api", "Get a key: steamgriddb.com/profile/preferences/api")}</p>
       </div>
       <div class="carte-reglage">
         <p class="eyebrow">{tr(config.langue, "Sources de recherche automatique de jaquette actives", "Enabled automatic cover search sources")}</p>
@@ -722,33 +786,14 @@
             "Deletes all GameDraw data: games, platforms, history, achievements, settings and downloaded covers. This cannot be undone — export a backup first if needed."
           )}
         </p>
-        {#if !confirmationSuppression}
-          <button class="btn-danger" onclick={() => (confirmationSuppression = true)}>
-            <Trash2 size={15} strokeWidth={2.2} />
-            {tr(config.langue, "Supprimer toutes les données…", "Delete all data…")}
-          </button>
-        {:else}
-          <!-- Seconde étape : il faut TAPER le mot, un simple clic ne suffit
-               pas pour une action irréversible. -->
-          <p class="aide-danger">
-            {tr(config.langue, "Pour confirmer, tape", "To confirm, type")} <code>SUPPRIMER</code> {tr(config.langue, "ci-dessous :", "below:")}
-          </p>
-          <input type="text" placeholder="SUPPRIMER" bind:value={saisieSuppression} />
-          <div class="actions-danger">
-            <button
-              class="btn-danger"
-              disabled={saisieSuppression.trim().toUpperCase() !== "SUPPRIMER" || suppressionEnCours}
-              onclick={supprimerToutesDonnees}
-            >
-              {#if suppressionEnCours}<Loader2 size={15} strokeWidth={2.2} class="spin" />{:else}<Trash2 size={15} strokeWidth={2.2} />{/if}
-              {tr(config.langue, "Confirmer la suppression définitive", "Confirm permanent deletion")}
-            </button>
-            <button class="btn-annuler" onclick={() => { confirmationSuppression = false; saisieSuppression = ""; }}>
-              {tr(config.langue, "Annuler", "Cancel")}
-            </button>
-          </div>
-        {/if}
+        <button class="btn-danger" onclick={() => { confirmationSuppression = true; saisieSuppression = ""; messageDonnees = null; }}>
+          <Trash2 size={15} strokeWidth={2.2} />
+          {tr(config.langue, "Supprimer toutes les données…", "Delete all data…")}
+        </button>
+
       </div>
+    {:else if categorie === "misesajour"}
+      <GithubUpdatesView {config} {onConfigChange} {confirmer} {discoveredUpdate} />
     {:else if categorie === "apropos"}
       <div class="carte-reglage carte-apropos">
         <div class="apropos-entete">
@@ -761,6 +806,18 @@
         <p class="aide apropos-description">
           {tr(config.langue, "Application locale de tirage et de gestion de bibliothèque de jeux vidéo, conçue pour Windows.", "Local-first game drawing and video game library management app designed for Windows.")}
         </p>
+      </div>
+
+      <div class="carte-reglage" aria-label={tr(config.langue, "Journal des changements", "Changelog")}>
+        <p class="eyebrow">{tr(config.langue, "Nouveautés — GameDraw 1.0.6", "What's new — GameDraw 1.0.6")}</p>
+        <ul class="gd-release-notes">
+          <li>{tr(config.langue, "Menu contextuel sur les jaquettes : modifier, image locale, SteamGridDB et retrait confirmé.", "Cover right-click menu: edit, local file, SteamGridDB and confirmed removal.")}</li>
+          <li>{tr(config.langue, "Lancement du site SteamGridDB dans le navigateur par défaut (permissions Tauri corrigées).", "SteamGridDB website opens in the default browser (fixed Tauri permissions).")}</li>
+          <li>{tr(config.langue, "Confirmation d’import claire et bouton pour fermer l’atelier après application.", "Explicit success message and button to close the cover studio.")}</li>
+          <li>{tr(config.langue, "Paramétrage du dépôt GitHub masqué ; seuls les réglages utiles restent affichés.", "GitHub repository editor is hidden; user-facing update settings remain.")}</li>
+          <li>{tr(config.langue, "Atelier de jaquettes repositionné au-dessus de la fiche pour éviter le contenu coupé.", "Cover studio is no longer clipped by the game-details dialog.")}</li>
+          <li>{tr(config.langue, "Version, README FR/EN et documentation DEV-HUB mis à jour.", "Updated version, FR/EN readmes and DEV-HUB documentation.")}</li>
+        </ul>
       </div>
 
       <div class="carte-reglage">
@@ -786,6 +843,38 @@
     {/if}
   </div>
 </section>
+
+{#if confirmationSuppression || suppressionTerminee}
+  <div class="gd-delete-overlay" role="presentation">
+    <div class="gd-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="gd-delete-title" aria-describedby="gd-delete-message">
+      {#if suppressionTerminee}
+        <div class="gd-delete-emblem gd-delete-success"><CheckCircle2 size={30} /></div>
+        <h2 id="gd-delete-title">{tr(config.langue, "Ménage de boss final réussi !", "Final-boss cleanup complete!")}</h2>
+        <p id="gd-delete-message">{messageDonnees}</p>
+        <div class="gd-delete-warning"><DoorOpen size={17}/>{tr(config.langue, "Ferme complètement GameDraw avant de le relancer. Ne continue pas à modifier les réglages.", "Fully close GameDraw before reopening. Do not edit settings until restart.")}</div>
+        {#if erreurFermeture}<p class="aide-danger" role="alert">{erreurFermeture}</p>{/if}
+        <button class="gd-delete-primary" onclick={fermerApresSuppression}><DoorOpen size={16} /> {tr(config.langue, "Fermer GameDraw maintenant", "Close GameDraw now")}</button>
+      {:else}
+        <div class="gd-delete-emblem"><ShieldAlert size={30}/></div>
+        <h2 id="gd-delete-title">{tr(config.langue, "Attention, bouton nucléaire !", "Warning, nuclear button!")}</h2>
+        <p id="gd-delete-message">{tr(config.langue,
+          "Ton backlog est sur le point de rejoindre le royaume des sauvegardes perdues. Pas de New Game+ pour tes données : cette suppression est définitive.",
+          "Your backlog is about to enter the realm of lost saves. No New Game+ for your data: this deletion is permanent.")}</p>
+        <div class="gd-delete-warning"><ShieldAlert size={17}/>{tr(config.langue, "Une sauvegarde est vivement recommandée. Après suppression, ferme et relance GameDraw.", "A backup is strongly recommended. After deletion, close and reopen GameDraw.")}</div>
+        <label for="gd-delete-word">{tr(config.langue, "Pour confirmer, tape SUPPRIMER :", "To confirm, type SUPPRIMER:")}</label>
+        <input id="gd-delete-word" class="gd-delete-input" type="text" placeholder="SUPPRIMER" autocomplete="off" bind:value={saisieSuppression}/>
+        {#if messageDonnees}<p class="gd-delete-error" role="alert">{messageDonnees}</p>{/if}
+        <div class="gd-delete-actions">
+          <button class="gd-delete-secondary" onclick={() => { confirmationSuppression = false; saisieSuppression = ""; }} disabled={suppressionEnCours}>{tr(config.langue, "Non, je tiens à mes jeux !", "No, I love my games!")}</button>
+          <button class="gd-delete-primary" disabled={saisieSuppression.trim().toUpperCase() !== "SUPPRIMER" || suppressionEnCours} onclick={supprimerToutesDonnees}>
+            {#if suppressionEnCours}<Loader2 size={16} class="spin" />{:else}<Trash2 size={16}/>{/if}
+            {tr(config.langue, "Supprimer définitivement", "Delete permanently")}
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
 
@@ -866,17 +955,19 @@
   }
 
   .carte-reglage {
-    padding: var(--space-3);
+    padding: clamp(14px, 2vw, 20px);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 11px;
     width: 100%;
     min-width: 0;
     border-radius: var(--radius);
     border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
     background: linear-gradient(160deg, color-mix(in srgb, var(--card) 85%, transparent), color-mix(in srgb, var(--card) 55%, transparent));
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    transition: border-color .2s ease, box-shadow .2s ease;
   }
+  .carte-reglage:hover { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
 
   select,
   input[type="text"],
@@ -886,11 +977,12 @@
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 6px 10px;
+    padding: 10px 12px;
     font-family: var(--font-body);
     font-size: 0.85rem;
     width: 100%;
   }
+  input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   input[type="range"] {
     width: 100%;
     accent-color: var(--accent);
@@ -1190,6 +1282,22 @@
     cursor: pointer;
   }
 
+  .btn-sgdb-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 13%, var(--input));
+    cursor: pointer;
+    align-self: flex-start;
+    font-size: .81rem;
+  }
+  .btn-sgdb-action:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 25%, var(--input)); }
+
   .btn-effacer {
     display: flex;
     align-items: center;
@@ -1376,4 +1484,26 @@
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
+
+  .gd-delete-overlay { position: fixed; inset: 0; z-index: 1200; background: rgba(5, 6, 17, .78); backdrop-filter: blur(10px); display: grid; place-items: center; padding: 18px; animation: gd-overlay-in .2s ease-out; }
+  .gd-delete-dialog { width: min(480px, 100%); max-height: min(90vh, 740px); overflow-y: auto; display: flex; flex-direction: column; align-items: stretch; gap: 14px; background: var(--card); color: var(--text); padding: clamp(20px,4vw,30px); border-radius: 22px; border: 1px solid color-mix(in srgb,var(--danger) 37%,var(--border)); box-shadow: 0 25px 100px rgba(0,0,0,.53); animation: gd-dialog-in .24s cubic-bezier(.2,1,.3,1); }
+  .gd-delete-dialog h2 { color: var(--text); font-family: var(--font-display); margin: 0; font-size: 1.45rem; line-height: 1.2; text-align: center; }
+  .gd-delete-dialog p { margin: 0; color: var(--muted); line-height: 1.6; font-size: .91rem; }
+  .gd-delete-emblem { margin: auto; display: grid; place-items: center; width: 62px; height: 62px; color: var(--danger); border: 1px solid color-mix(in srgb,var(--danger) 60%,transparent); border-radius: 19px; background: color-mix(in srgb,var(--danger) 14%,transparent); box-shadow: 0 0 26px color-mix(in srgb,var(--danger) 20%,transparent); }
+  .gd-delete-success { color: var(--success); border-color: var(--success); background: color-mix(in srgb,var(--success) 13%,transparent); }
+  .gd-delete-dialog label { color: var(--text); font-weight: 700; font-size: .85rem; }
+  .gd-delete-input { width: 100%; padding: 12px 14px; background: var(--input); border: 1px solid var(--border); color: var(--text); border-radius: 10px; font-family: var(--font-mono); }
+  .gd-delete-error { color: var(--danger) !important; font-weight:700; }
+  .gd-delete-warning { display: flex; align-items: flex-start; gap: 10px; padding: 12px; background: color-mix(in srgb, var(--warning) 9%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: 12px; font-size: .82rem; color: var(--text); line-height: 1.5; }
+  .gd-delete-warning :global(svg) { flex-shrink: 0; color: var(--warning); }
+  .gd-delete-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .gd-delete-primary, .gd-delete-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 11px; min-height: 42px; padding: 10px 14px; cursor: pointer; font-family: var(--font-display); font-size: .92rem; font-weight: 700; }
+  .gd-delete-primary { flex: 1; border: 0; background: var(--danger); color: var(--darkbg); }
+  .gd-delete-secondary { flex: 1; border: 1px solid var(--border); background: var(--input); color: var(--text); }
+  .gd-delete-primary:disabled { opacity: .45; cursor: not-allowed; }
+  .gd-delete-primary:hover:not(:disabled), .gd-delete-secondary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+  @keyframes gd-overlay-in { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes gd-dialog-in { from { transform: translateY(12px) scale(.97); opacity:.5 } to { transform: translateY(0) scale(1); opacity:1 } }
+  @media (prefers-reduced-motion: reduce) { .gd-delete-overlay, .gd-delete-dialog { animation: none; } }
+  .gd-release-notes { margin:0; padding-left:18px; color:var(--text); display:grid; gap:8px; font-size:.86rem; line-height:1.5; }
 </style>

@@ -14,14 +14,18 @@
   const cover = $derived(classifyCoverSource(path));
   const src = $derived.by(() => {
     if (fallbackUrl) return fallbackUrl;
-    if (!cover.value || cover.kind === "invalid") return null;
-    if (cover.kind !== "local") return cover.value;
-    try {
-      return convertFileSrc(cover.value);
-    } catch {
-      // En cas d'URL Windows invalide, conserver un rendu sûr.
-      return null;
+    // GAMEDRAW-104-HF2-COVER-GUARD : les valeurs null couvrent les sources empty/invalid.
+    // Eviter la comparaison `kind === invalid` apres avoir teste la valeur : TS2367.
+    if (!cover.value) return null;
+    if (cover.kind === "local") {
+      try {
+        return convertFileSrc(cover.value);
+      } catch {
+        // En cas d'URL Windows invalide, conserver un rendu sûr.
+        return null;
+      }
     }
+    return cover.value;
   });
 
   // Important : si l'image change, l'ancien état d'échec ne doit pas persister.

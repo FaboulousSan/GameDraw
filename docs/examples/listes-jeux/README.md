@@ -5,6 +5,16 @@ Elles servent surtout à tester rapidement l'import ou à amorcer une bibliothè
 
 > Les listes ne prétendent pas être des catalogues officiels complets. Tu peux les modifier, supprimer des lignes ou ajouter tes propres jeux avant import.
 
+## 🪄 Import direct dans l’application finale (1.0.6 HF1)
+
+Les quatre fichiers CSV ci-dessous sont **embarqués dans le frontend compilé**. Même dans le portable, le MSI et l'installateur NSIS, aucun fichier du dossier `docs/` n'est nécessaire pour importer les listes fournies :
+
+1. Ouvre **Bibliothèque → Importer → Listes fournies (complètes)**.
+2. Choisis **PC (60)**, **Switch 1 (60)**, **Switch 2 (40)**, **Switch 1+2 (100)** ou **PC + Switch (160)**.
+3. Lis l'aperçu, clique sur **Ajouter**, puis vérifie le bilan d'import.
+
+Les jeux PC vont dans la bibliothèque PC, les jeux Switch dans la bibliothèque Switch, avec leurs tags de génération conservés. Les jeux existants et leurs jaquettes ne sont **jamais remplacés**. Relancer le même import ignore les doublons. Les listes sont des sélections de découverte et **ne constituent pas un catalogue complet mondial**.
+
 ## 📦 Fichiers fournis
 
 | Plateforme | TXT | CSV | Nombre |

@@ -1,9 +1,12 @@
 <script lang="ts">
   import CoverImage from "./CoverImage.svelte";
+  import MenuContextuel from "./MenuContextuel.svelte";
+  import type { ActionMenu } from "./menu-contextuel";
   import { Trash2, X, FolderOpen, Search, Loader2, Heart, Plus, ListChecks, SquareCheck, Square, Award, ExternalLink, Pencil, Check, Download } from "@lucide/svelte";
-  import { scale, fade, fly } from "svelte/transition";
+  import { fly } from "svelte/transition";
+  import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import SteamGridDBPanel from "./SteamGridDBPanel.svelte";
   import { api, type RawgGame } from "./api";
   import type { AppConfig, Game, StatutJeu } from "./types";
   import { ICONE_NOTATION_COMPOSANTS, ICONE_NOTATION_LABELS, ICONE_NOTATION_ORDER } from "./icones-notation";
@@ -37,17 +40,22 @@
   // légère au quotidien. Statut/note/marqueurs/défis restent interactifs
   // dans les deux modes : ce sont des bascules rapides, pas de l'édition.
   let mode = $state<"consultation" | "edition">("consultation");
+  let ficheDialog: HTMLDialogElement;
+  onMount(() => {
+    // L'API top-layer échappe à la barre intégrée et au scroll de la fiche.
+    ficheDialog.showModal();
+    return () => { if (ficheDialog?.open) ficheDialog.close(); };
+  });
 
   // svelte-ignore state_referenced_locally -- intentionnel : valeur de
   // départ pratique (nom du jeu), l'utilisateur doit ensuite pouvoir taper
   // sa propre recherche sans qu'elle soit réécrasée si `game` se met à jour.
   let rechercheRawg = $state(game.nom);
-  type SourceCover = "rawg" | "steam" | "steamgriddb";
+  type SourceCover = "rawg" | "steam";
 
   const SOURCES_INFO: Record<SourceCover, { label: string; aideFr: string; aideEn: string; needsKey: boolean }> = {
     steam: { label: "Steam", aideFr: "Jeux Steam/PC uniquement, aucune clé requise.", aideEn: "Steam/PC games only, no API key required.", needsKey: false },
     rawg: { label: "RAWG", aideFr: "Toutes plateformes, clé API requise.", aideEn: "All platforms, API key required.", needsKey: true },
-    steamgriddb: { label: "SteamGridDB", aideFr: "Toutes plateformes, clé API requise.", aideEn: "All platforms, API key required.", needsKey: true },
   };
 
   // Seules les sources activées dans Options > Connexion sont proposées ici.
@@ -57,7 +65,6 @@
 
   function aUneCle(s: SourceCover): boolean {
     if (s === "rawg") return !!config.rawgApiKey.trim();
-    if (s === "steamgriddb") return !!config.steamgriddbApiKey.trim();
     return true;
   }
 
@@ -75,6 +82,8 @@
   let telechargementEnCours = $state(false);
   let erreurRawg = $state<string | null>(null);
   let messageCover = $state<string | null>(null);
+  let sgdbPanelOpen = $state(false);
+  let coverMenu = $state<{ x: number; y: number; actions: ActionMenu[] } | null>(null);
   let pulseNote = $state(false);
   let pulseTimeout: ReturnType<typeof setTimeout> | null = null;
   let nouveauDefi = $state("");
@@ -118,7 +127,7 @@
       telechargementEnCours = true;
       const chemin = await api.saveLocalCover(platformId, game.id, selection);
       onSave({ cover: chemin });
-      messageCover = tr(config.langue, "Jaquette locale enregistrée.", "Local cover saved.");
+      messageCover = tr(config.langue, "Image enregistrée ! Tu peux maintenant fermer la fiche : elle sera aussi visible dans la Bibliothèque.", "Image saved! You can now close this game detail; it is also available in the library.");
     } catch (e) {
       erreurRawg = `${tr(config.langue, "Impossible d'importer cette image", "Cannot import this image")} : ${String(e)}`;
     } finally {
@@ -126,20 +135,17 @@
     }
   }
 
-  // Fenêtre Tauri intégrée (pas le navigateur externe) sur la recherche
-  // SteamGridDB — reste "dans" l'app visuellement. Pas d'intégration
-  // automatique du clic sur une image (nécessiterait d'injecter du script
-  // dans une page tierce : fragile, casse à la moindre mise à jour de leur
-  // site) — après téléchargement, l'image se sélectionne via "Choisir un
-  // fichier" juste à côté, comme le script PowerShell d'origine.
-  async function ouvrirFenetreSteamGridDB() {
-    const requete = encodeURIComponent(game.nom);
-    new WebviewWindow(`sgdb-${game.id}`, {
-      url: `https://www.steamgriddb.com/search/grids?term=${requete}`,
-      title: `SteamGridDB — ${game.nom}`,
-      width: 1000,
-      height: 720,
-    });
+  // HF5 : recherche SteamGridDB dans un vrai atelier interne qui reste ouvert
+  // même sans clé API. Aucune nouvelle WebView ni fermeture automatique.
+  function chercherSteamGridDB() {
+    sgdbPanelOpen = true;
+    erreurRawg = null;
+    messageCover = null;
+  }
+
+  function imageSteamGridDBAppliquee(path: string) {
+    onSave({ cover: path });
+    messageCover = tr(config.langue, "Jaquette SteamGridDB enregistrée.", "SteamGridDB cover saved.");
   }
 
   // Coller directement l'URL d'une image trouvée sur le web (clic droit sur
@@ -167,19 +173,25 @@
     }
   }
 
-  async function rechercherCouverture() {
-    if (!rechercheRawg.trim()) return;
-    if (SOURCES_INFO[sourceCover].needsKey && !aUneCle(sourceCover)) return;
+  async function rechercherCouverture(sourceForcee?: SourceCover) {
+    if (rawgEnCours) return;
+    const source = sourceForcee ?? sourceCover;
+    const query = rechercheRawg.trim();
+    if (!query || (SOURCES_INFO[source].needsKey && !aUneCle(source))) {
+      erreurRawg = !query
+        ? tr(config.langue, "Indique le nom d’un jeu à rechercher.", "Enter a game name to search.")
+        : tr(config.langue, "Clé API manquante : vérifie Options → Connexion.", "Missing API key: check Settings → Connections.");
+      return;
+    }
+    sourceCover = source;
     rawgEnCours = true;
     erreurRawg = null;
     resultatsRawg = null;
     try {
-      if (sourceCover === "rawg") {
-        resultatsRawg = await api.rawgSearch(config.rawgApiKey, rechercheRawg);
-      } else if (sourceCover === "steamgriddb") {
-        resultatsRawg = await api.steamgriddbSearch(config.steamgriddbApiKey, rechercheRawg);
+      if (source === "rawg") {
+        resultatsRawg = await api.rawgSearch(config.rawgApiKey.trim(), query);
       } else {
-        resultatsRawg = await api.steamStoreSearch(rechercheRawg);
+        resultatsRawg = await api.steamStoreSearch(query);
       }
     } catch (e) {
       erreurRawg = String(e);
@@ -209,20 +221,43 @@
     if (confirme) onDelete();
   }
 
+  function ouvrirMenuJaquette(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const actions: ActionMenu[] = [
+      { label: tr(config.langue, "Modifier la fiche", "Edit game details"), icone: Pencil,
+        action: () => { mode = "edition"; } },
+      { label: tr(config.langue, "Choisir une image locale…", "Choose a local image…"), icone: FolderOpen,
+        groupe: tr(config.langue, "Jaquette", "Cover"), action: () => { mode = "edition"; void choisirFichierLocal(); } },
+      { label: tr(config.langue, "Rechercher sur SteamGridDB…", "Search SteamGridDB…"), icone: Search,
+        action: () => { mode = "edition"; chercherSteamGridDB(); } },
+    ];
+    if (game.cover) actions.push({
+      label: tr(config.langue, "Retirer la jaquette de cette fiche…", "Remove this game's cover…"),
+      icone: Trash2, danger: true, separateurAvant: true, action: async () => {
+        const ok = await confirmer(tr(config.langue,
+          `Retirer la jaquette de « ${game.nom} » ? Le jeu sera conservé.`,
+          `Remove the cover from “${game.nom}”? The game will be kept.`));
+        if (ok) onSave({ cover: null });
+      },
+    });
+    coverMenu = { x: event.clientX, y: event.clientY, actions };
+  }
+
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") onClose();
+    if (e.key === "Escape" && !sgdbPanelOpen) onClose();
   }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events -- clic-dehors pour
-     fermer est un bonus souris ; le clavier est déjà couvert par Échap et
-     par le bouton de fermeture explicite. -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" transition:fade={{ duration: 120 }} onclick={onClose}>
-  <div class="fiche glass" transition:scale={{ duration: 160, start: 0.96 }} onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-    <button class="fermer" onclick={onClose} aria-label={tr(config.langue, "Fermer", "Close")}><X size={18} strokeWidth={2.2} /></button>
+<!-- Dialogue natif dans la top-layer, pas un div fixe dépendant d'un conteneur défilant. -->
+<dialog bind:this={ficheDialog} class="fiche-dialog" aria-label={game.nom}
+  oncancel={(e) => { e.preventDefault(); if (!sgdbPanelOpen) onClose(); }}>
+  <div class="fiche glass">
+    <div class="fiche-toolbar">
+      <span class="fiche-toolbar-label">{tr(config.langue, "Fiche du jeu", "Game details")} · {game.nom}</span>
+      <div class="fiche-toolbar-buttons">
     <button
       class="crayon"
       onclick={() => (mode = mode === "consultation" ? "edition" : "consultation")}
@@ -231,10 +266,15 @@
     >
       {#if mode === "consultation"}<Pencil size={16} strokeWidth={2.2} />{:else}<Check size={16} strokeWidth={2.2} />{/if}
     </button>
-
+    <button class="fermer" type="button" onclick={onClose} aria-label={tr(config.langue, "Fermer la fiche", "Close game details")} title={tr(config.langue, "Fermer (Échap)", "Close (Escape)")}><X size={20} strokeWidth={2.2} /></button>
+      </div>
+    </div>
+    <div class="fiche-scroll">
     <div class="colonnes">
       <div class="colonne-cover" in:fly={{ x: -16, duration: 240, delay: 40 }}>
-        <div class="cover-cadre">
+        <!-- Intercepter le clic droit : le menu WebView2 « Inspecter » n’a pas sa place sur une jaquette. -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div class="cover-cadre" oncontextmenu={ouvrirMenuJaquette} role="group" aria-label={tr(config.langue, "Jaquette : clic droit pour les actions", "Cover: right-click for actions")}>
           <CoverImage path={game.cover} alt={game.nom} variant="detail" />
         </div>
         {#if mode === "edition"}
@@ -242,13 +282,16 @@
           <FolderOpen size={15} strokeWidth={2.2} />
           {tr(config.langue, "Choisir un fichier", "Choose a file")}
         </button>
-        <button class="action-cover secondaire" onclick={ouvrirFenetreSteamGridDB}>
-          <ExternalLink size={15} strokeWidth={2.2} />
-          {tr(config.langue, "Chercher sur SteamGridDB", "Search on SteamGridDB")}
+        <button class="action-cover secondaire" onclick={chercherSteamGridDB} disabled={telechargementEnCours}>
+          <Search size={15} strokeWidth={2.2} />
+          {tr(config.langue, "Atelier SteamGridDB · rechercher des images", "SteamGridDB studio · find artwork")}
         </button>
         <p class="aide-source">
-          {tr(config.langue, "Ouvre une fenêtre dans l’app. Trouve une image, copie l’adresse de l’image avec le clic droit, puis colle-la ci-dessous : elle sera téléchargée et appliquée directement.", "Opens a window in the app. Find an image, right-click to copy its image address, then paste it below: it will be downloaded and applied directly.")}
+          {tr(config.langue,
+            "Avec clé : choisissez un jeu puis une jaquette parmi plusieurs images. Sans clé : navigateur, fichier local ou URL directe, dans le même atelier.",
+            "With a key: select a game then pick from multiple images. Without a key: browser, local file or direct URL in the same studio.")}
         </p>
+        {#if erreurRawg}<p class="erreur-rawg" role="alert">{erreurRawg}</p>{/if}
         <div class="coller-url">
           <input
             type="text"
@@ -283,7 +326,7 @@
           {:else}
             <div class="recherche-rawg">
               <input type="text" placeholder={tr(config.langue, "Nom à rechercher", "Name to search")} bind:value={rechercheRawg} onkeydown={(e) => e.key === "Enter" && rechercherCouverture()} />
-              <button class="action-cover" onclick={rechercherCouverture} disabled={rawgEnCours}>
+              <button class="action-cover" onclick={() => rechercherCouverture()} disabled={rawgEnCours}>
                 {#if rawgEnCours}<Loader2 size={15} strokeWidth={2.2} class="spin" />{:else}<Search size={15} strokeWidth={2.2} />{/if}
                 {tr(config.langue, "Rechercher", "Search")}
               </button>
@@ -303,8 +346,13 @@
           </div>
         {/if}
         {/if}
-        {#if messageCover}<p class="message-cover" role="status">{messageCover}</p>{/if}
-        {#if erreurRawg}<p class="erreur-rawg" role="alert">{erreurRawg}</p>{/if}
+        {#if messageCover}
+          <div class="cover-import-confirmation" role="status">
+            <p class="message-cover">{messageCover}</p>
+            <button type="button" class="action-cover" onclick={onClose}><Check size={15}/>{tr(config.langue, "Terminer et fermer la fiche", "Done — close game details")}</button>
+          </div>
+        {/if}
+
         {/if}
       </div>
 
@@ -486,34 +534,44 @@
         {/if}
       </div>
     </div>
+    </div>
   </div>
-</div>
-
+  {#if coverMenu && !sgdbPanelOpen}
+    <MenuContextuel x={coverMenu.x} y={coverMenu.y} actions={coverMenu.actions}
+      titre={tr(config.langue, "Actions sur la jaquette", "Cover actions")}
+      onClose={() => (coverMenu = null)} />
+  {/if}
+</dialog>
+  {#if sgdbPanelOpen}
+    <SteamGridDBPanel
+      initialQuery={rechercheRawg.trim() || game.nom}
+      {config}
+      {platformId}
+      gameId={game.id}
+      onClose={() => (sgdbPanelOpen = false)}
+      onApplied={imageSteamGridDBAppliquee}
+    />
+  {/if}
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(3px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-    border: none;
-    width: 100%;
-    cursor: default;
+  .fiche-dialog {
+    position: fixed; inset: 0; margin: auto; padding: 0; border: 0;
+    width: min(960px, calc(100vw - 18px)); max-width: none;
+    height: min(760px, calc(100dvh - 18px)); max-height: none;
+    background: transparent; color: var(--text); overflow: hidden;
+    border-radius: 18px; box-shadow: 0 25px 95px rgba(0,0,0,.55);
   }
-
-  .fiche {
-    position: relative;
-    max-width: 920px;
-    width: 100%;
-    max-height: 92vh;
-    overflow-y: auto;
-    padding: var(--space-4);
-    animation: fiche-glow 0.6s ease-out;
-  }
+  .fiche-dialog::backdrop { background:rgba(0,0,0,.67); backdrop-filter:blur(5px); }
+  .fiche { display:flex; flex-direction:column; height:100%; width:100%; max-width:none;
+    max-height:none; overflow:hidden; padding:0; animation:fiche-glow .6s ease-out; }
+  .fiche-toolbar { flex:none; position:relative; z-index:3; display:flex; align-items:center;
+    justify-content:space-between; gap:10px; padding:10px 14px;
+    background:color-mix(in srgb,var(--input) 78%,var(--card));
+    border-bottom:1px solid var(--border); min-height:51px; }
+  .fiche-toolbar-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    color:var(--text); font-size:.85rem; font-weight:750; }
+  .fiche-toolbar-buttons { display:flex; flex:none; gap:8px; align-items:center; }
+  .fiche-scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    padding:var(--space-4); scrollbar-gutter:stable; }
   @keyframes fiche-glow {
     0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--glow) 60%, transparent); }
     40% { box-shadow: 0 0 40px 6px color-mix(in srgb, var(--glow) 45%, transparent); }
@@ -521,9 +579,7 @@
   }
 
   .fermer {
-    position: absolute;
-    top: var(--space-2);
-    right: var(--space-2);
+    position: relative;
     background: transparent;
     border: none;
     color: var(--muted);
@@ -536,9 +592,7 @@
     background: color-mix(in srgb, var(--input) 80%, transparent);
   }
   .crayon {
-    position: absolute;
-    top: var(--space-2);
-    right: calc(var(--space-2) + 30px);
+    position: relative;
     background: color-mix(in srgb, var(--accent) 15%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     color: var(--accent);
@@ -726,6 +780,8 @@
   }
 
   .message-cover { color: var(--success); font-size: 0.78rem; margin: 0; }
+  .cover-import-confirmation { display:grid; gap:8px; padding:10px; border:1px solid color-mix(in srgb,var(--success) 35%,var(--border)); background:color-mix(in srgb,var(--success) 9%,var(--card)); border-radius:11px; }
+  .cover-import-confirmation .action-cover { color:var(--text); }
   .erreur-rawg {
     color: var(--danger);
     font-size: 0.78rem;
@@ -971,5 +1027,10 @@
   }
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+  @media (max-width: 620px) {
+    .fiche-dialog { width:calc(100vw - 10px); height:calc(100dvh - 10px); border-radius:12px; }
+    .fiche-scroll { padding:12px; scrollbar-gutter:auto; }
+    .fiche-toolbar { padding:8px 12px; }
   }
 </style>

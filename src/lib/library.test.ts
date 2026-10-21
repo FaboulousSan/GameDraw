@@ -5,6 +5,9 @@ import {
   supprimerJeu,
   supprimerPlusieursJeux,
   modifierJeu,
+  modifierPlusieursJeux,
+  dupliquerJeu,
+  ajouterTagsPlusieursJeux,
   filtrerJeux,
   creerJeu,
   parseListeTexte,
@@ -217,5 +220,38 @@ describe("import CSV 1.0.4 — Excel français", () => {
   it("préserve le CSV à virgules classique", () => {
     const jeux = parseCsv('Nom,Tags\n"Hades","roguelike,action"');
     expect(jeux[0].tags).toBe("roguelike,action");
+  });
+});
+
+
+describe("GameDraw HF3 — menu contextuel et opérations groupées", () => {
+  it("change le statut uniquement des jeux sélectionnés sans modifier le modèle d'origine", () => {
+    const a = creerJeu("A"), b = creerJeu("B"), c = creerJeu("C");
+    const original = lib([a, b, c]);
+    const modifie = modifierPlusieursJeux(original, [a.id, c.id, "inconnu"], { statut: "Termine" });
+    expect(modifie.jeux.map((j) => j.statut)).toEqual(["Termine", "NonCommence", "Termine"]);
+    expect(original.jeux[0].statut).toBe("NonCommence");
+  });
+  it("empêche le remplacement d'identifiants ou de noms via une action groupée", () => {
+    const a = creerJeu("A");
+    const r = modifierPlusieursJeux(lib([a]), [a.id], { id: "volé", nom: "Z", envieDeFaire: true });
+    expect(r.jeux[0].id).toBe(a.id);
+    expect(r.jeux[0].nom).toBe("A");
+    expect(r.jeux[0].envieDeFaire).toBe(true);
+  });
+  it("ajoute des tags sans dupliquer ni effacer les tags existants", () => {
+    const a = { ...creerJeu("A"), tags: "rpg, Coop" };
+    const b = creerJeu("B");
+    const r = ajouterTagsPlusieursJeux(lib([a,b]), [a.id], "Coop, indé, INdÉ");
+    expect(r.jeux[0].tags).toBe("rpg, Coop, indé");
+    expect(r.jeux[1].tags).toBe("");
+  });
+  it("duplique avec un nouvel ID et des défis indépendants", () => {
+    const a = { ...creerJeu("A"), defis: [{ id: "d1", texte: "Boss", complete: false }] };
+    const r = dupliquerJeu(lib([a]), a.id);
+    expect(r.jeux).toHaveLength(2);
+    expect(r.jeux[1].nom).toBe("A (copie)");
+    expect(r.jeux[1].id).not.toBe(a.id);
+    expect(r.jeux[1].defis).not.toBe(a.defis);
   });
 });

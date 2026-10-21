@@ -1,5 +1,7 @@
 <script lang="ts">
   import CoverImage from "./lib/CoverImage.svelte";
+  import WindowControls from "./lib/WindowControls.svelte";
+  import UpdateNotification from "./lib/UpdateNotification.svelte";
   import { onMount } from "svelte";
   import { spring } from "svelte/motion";
   import { fade, fly } from "svelte/transition";
@@ -10,7 +12,9 @@
   import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
   import { Dices, Gamepad2, Timer, SlidersHorizontal, Settings, LayoutGrid } from "@lucide/svelte";
   import { langueApp, tr, labelStatut, langueDepuisLocale, type LangueApp } from "./lib/i18n";
-  import { api } from "./lib/api";
+  import { api, type GithubRelease } from "./lib/api";
+  import { APP_VERSION } from "./lib/app-meta";
+  import { doitVerifierAuDemarrage } from "./lib/github-updates";
   import { applyTheme } from "./lib/themes";
   import ThemePicker from "./lib/ThemePicker.svelte";
   import ConfirmDialog from "./lib/ConfirmDialog.svelte";
@@ -22,10 +26,12 @@
   import FicheJeu from "./lib/FicheJeu.svelte";
   import OptionsView from "./lib/OptionsView.svelte";
   import LanguageSetupDialog from "./lib/LanguageSetupDialog.svelte";
+  import UpdatesFirstRunDialog from "./lib/UpdatesFirstRunDialog.svelte";
   import type { AppConfig, Platform, GameLibrary, DrawSession, Historique, Badges, Game, ThemeName, OngletMasquable } from "./lib/types";
   import { BLOCS_RECAP, DEFAULT_CONFIG, EMPTY_SESSION, EMPTY_HISTORIQUE, EMPTY_BADGES, SCHEMA_VERSION, objectifEnMinutes } from "./lib/types";
   import { drawFromLibrary, sampleNames, drawMultiple, appliquerFiltres, FILTRES_VIDES, filtresActifs, type FiltresTirage } from "./lib/draw";
-  import { modifierJeu, supprimerJeu } from "./lib/library";
+  import { modifierJeu, supprimerJeu, importerLignes } from "./lib/library";
+  import { packsAImporter, type PackInclusId } from "./lib/catalogues-complets";
   import { drawAnimations, clearAnimationNodes } from "./lib/animations/animations";
   import { revealEffects } from "./lib/effects/effects";
   import { computeRemainingMs, computeEndsAt, countdownPhase, formatDuration } from "./lib/session";
@@ -33,9 +39,37 @@
   import { calculerStatsPourBadges, badgesDebloquables, nouveauxBadges, BADGE_DEFINITIONS, LABELS_PALIER } from "./lib/badges";
 
   let config = $state<AppConfig>(DEFAULT_CONFIG);
+  let availableUpdate = $state<GithubRelease | null>(null);
+  let focusUpdates = $state(false);
+  async function checkUpdatesAtStartup(saved: AppConfig) {
+    if (!doitVerifierAuDemarrage(saved)) return;
+    try {
+      const found = await api.githubReleaseCheck("FaboulousSan/GameDraw", saved.updatesChannel, APP_VERSION);
+      // Éviter une notification si l'utilisateur a désactivé le contrôle entre-temps.
+      if (config.updatesAutoCheck && config.updatesChannel === saved.updatesChannel && config.updatesGithubRepo === saved.updatesGithubRepo) {
+        availableUpdate = found;
+        if (found) {
+          // Notification native seulement si Windows l'autorise déjà ; aucun prompt intrusif.
+          try {
+            if (await isPermissionGranted()) {
+              await sendNotification({ title: `GameDraw ${found.version}`, body: tr(config.langue,
+                `Mise à jour disponible (actuellement ${APP_VERSION}). Ouvre GameDraw pour les détails.`,
+                `Update available (currently ${APP_VERSION}). Open GameDraw for details.`) });
+            }
+          } catch { /* La notification intégrée reste disponible. */ }
+        }
+      }
+    } catch (e) {
+      // Un réseau indisponible ne doit JAMAIS casser le démarrage.
+      void api.logError(`GitHub updater (démarrage): ${String(e)}`).catch(() => {});
+    }
+  }
+
   let afficherChoixLanguePremierLancement = $state(false);
   let langueSystemeDetectee = $state<LangueApp>("fr");
   let erreurChoixLangue = $state<string | null>(null);
+  let afficherChoixMisesAJourPremierLancement = $state(false);
+  let erreurChoixMisesAJour = $state<string | null>(null);
 
   function detecterLangueSysteme(): LangueApp {
     const locale = typeof navigator !== "undefined"
@@ -270,7 +304,7 @@
   function gererRaccourci(e: KeyboardEvent) {
     // Le choix de langue du premier lancement est modal : aucun raccourci de
     // l'application ne doit agir derrière la fenêtre.
-    if (afficherChoixLanguePremierLancement) return;
+    if (afficherChoixLanguePremierLancement || afficherChoixMisesAJourPremierLancement) return;
 
     // Échap ferme la fiche ouverte — utile même depuis un champ, c'est le
     // seul cas où on ne filtre pas la saisie.
@@ -314,13 +348,23 @@
       }
 
       config = await api.loadConfig();
+      if (!config.updatesConsentAnswered) {
+        // Même après une réinstallation ou une migration, une config conservée
+        // ne permet pas de déduire une réponse au consentement.
+        afficherChoixMisesAJourPremierLancement = true;
+        config = { ...config, updatesAutoCheck: false };
+      }
       if (!configExistait) {
         langueSystemeDetectee = detecterLangueSysteme();
-        config = { ...config, langue: langueSystemeDetectee };
+        // Le premier lancement ne vérifie JAMAIS GitHub avant un accord explicite.
+        // Les installations existantes conservent leur préférence.
+        config = { ...config, langue: langueSystemeDetectee, updatesAutoCheck: false, updatesConsentAnswered: false };
         afficherChoixLanguePremierLancement = true;
       }
       applyTheme(config.theme);
       applyDensite(config.densite);
+      // Une seule vérification non bloquante, sans téléchargement ni installation.
+      void checkUpdatesAtStartup(config);
       await api.definirIconeFenetre(config.iconeFenetre);
 
       platforms = await api.listPlatforms();
@@ -407,6 +451,31 @@
     void verifierNouveauxBadges();
   }
 
+  /** Importe les listes fournies dans les bonnes bibliothèques, y compris
+   * depuis le .exe final. Pas de remplacement : les doublons sont ignorés.
+   * Chaque plateforme est sauvegardée avant de passer à la suivante.
+   */
+  async function importerPacksInclus(id: PackInclusId): Promise<{ ajoutes: number; ignores: number }> {
+    let ajoutes = 0;
+    let ignores = 0;
+    for (const pack of packsAImporter(id)) {
+      const plateforme = platforms.find((p) => p.id === pack.plateforme);
+      if (!plateforme) throw new Error(`Bibliothèque ${pack.plateforme} introuvable`);
+      const existante = plateforme.id === selectedPlatformId && library
+        ? library
+        : await api.loadGames(plateforme.id);
+      const resultat = importerLignes(existante, pack.lignes);
+      const totalAjoutes = resultat.library.jeux.length - existante.jeux.length;
+      if (totalAjoutes > 0) await api.saveGames(resultat.library);
+      if (plateforme.id === selectedPlatformId && totalAjoutes > 0) {
+        library = resultat.library;
+      }
+      ajoutes += totalAjoutes;
+      ignores += resultat.ignores;
+    }
+    return { ajoutes, ignores };
+  }
+
   async function majConfig(cfg: AppConfig) {
     // Journal d'usage (v26) : mémorise les thèmes essayés pour le succès
     // "Esthète". Fait ici plutôt que dans le sélecteur de thème, pour
@@ -424,13 +493,27 @@
   async function choisirLanguePremierLancement(langue: LangueApp) {
     erreurChoixLangue = null;
     try {
-      await majConfig({ ...config, langue });
+      await majConfig({ ...config, langue, updatesAutoCheck: false, updatesConsentAnswered: false });
       afficherChoixLanguePremierLancement = false;
+      afficherChoixMisesAJourPremierLancement = true;
     } catch (e) {
       erreurChoixLangue = langue === "en"
         ? `Unable to save the language choice: ${String(e)}`
         : `Impossible d’enregistrer le choix de langue : ${String(e)}`;
       void api.logError(`premier_lancement_langue: ${String(e)}`);
+    }
+  }
+
+  async function choisirMisesAJourPremierLancement(activer: boolean) {
+    erreurChoixMisesAJour = null;
+    try {
+      const updated = { ...config, updatesAutoCheck: activer, updatesConsentAnswered: true };
+      await majConfig(updated);
+      afficherChoixMisesAJourPremierLancement = false;
+      if (activer) void checkUpdatesAtStartup(updated);
+    } catch (e) {
+      erreurChoixMisesAJour = String(e);
+      void api.logError(`premier_lancement_mises_a_jour: ${String(e)}`).catch(() => {});
     }
   }
 
@@ -653,17 +736,16 @@
 
 <svelte:window onkeydown={gererRaccourci} />
 
-<main>
-  {#if loading}
-    <p class="etat">{tr(config.langue, "Chargement…", "Loading…")}</p>
-  {:else}
-    <header>
-      <div class="brand">
-        <Gamepad2 size={22} strokeWidth={2.2} color="var(--accent)" />
-        <h1>GameDraw</h1>
-      </div>
-      <div class="header-droite">
-        <nav class="onglets">
+<!-- Une seule barre haute : thème GameDraw + navigation + contrôles natifs.
+     La zone brand / l'espace libre restent déplaçables en mode frameless. -->
+<div class="window-chrome" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region>
+    <span class="brand-logo" data-tauri-drag-region><Gamepad2 size={22} strokeWidth={2.2} color="var(--accent)" /></span>
+    <h1 data-tauri-drag-region>GameDraw</h1>
+  </div>
+  <div class="window-navigation">
+    {#if !loading}
+      <nav class="onglets">
           <button class="onglet" class:active={vue === "tirage"} onclick={() => allerVue("tirage")}>{tr(config.langue, "Tirage", "Draw")}</button>
           {#if !estMasque("bibliotheque")}
             <button class="onglet" class:active={vue === "bibliotheque"} onclick={() => allerVue("bibliotheque")}>
@@ -686,13 +768,29 @@
           <button class="onglet" class:active={vue === "options"} onclick={() => allerVue("options")}>
             {tr(config.langue, "Options", "Settings")}
           </button>
-        </nav>
-        {#if config.afficherSelecteurTheme}
-          <ThemePicker value={config.theme} onChange={changerTheme} />
-        {/if}
-      </div>
-    </header>
+      </nav>
+      {#if config.afficherSelecteurTheme}
+        <ThemePicker value={config.theme} onChange={changerTheme} />
+      {/if}
+    {/if}
+  </div>
+  <div class="window-drag-space" data-tauri-drag-region aria-hidden="true"></div>
+  <WindowControls />
+</div>
 
+<main>
+  {#if !loading && availableUpdate && config.updatesAutoCheck}
+    <UpdateNotification
+      release={availableUpdate}
+      currentVersion={APP_VERSION}
+      langue={config.langue}
+      onDetails={() => { focusUpdates = true; allerVue("options"); }}
+      onDismiss={() => (availableUpdate = null)}
+    />
+  {/if}
+  {#if loading}
+    <p class="etat">{tr(config.langue, "Chargement…", "Loading…")}</p>
+  {:else}
     <div class="rule"></div>
 
     <!-- La transition doit envelopper le {#key}, PAS l'inverse : une
@@ -729,6 +827,9 @@
     errorMessage={erreurChoixLangue}
     onChoose={choisirLanguePremierLancement}
   />
+{/if}
+{#if afficherChoixMisesAJourPremierLancement && !afficherChoixLanguePremierLancement && !loading}
+  <UpdatesFirstRunDialog langue={config.langue} errorMessage={erreurChoixMisesAJour} onChoose={choisirMisesAJourPremierLancement}/>
 {/if}
 
 {#snippet contenuVue()}
@@ -973,6 +1074,7 @@
         config={config}
         {confirmer}
         onLibraryChange={majBibliotheque}
+        onImporterPacksInclus={importerPacksInclus}
         onConfigChange={majConfig}
         onPlatformChange={changerPlateforme}
         onOuvrirJeu={(gameId) => (jeuOuvertId = gameId)}
@@ -1002,7 +1104,7 @@
     {:else if vue === "recherche"}
       <RechercheGlobaleView platforms={platforms} onOuvrirJeu={ouvrirJeuFiche} />
     {:else if vue === "options"}
-      <OptionsView config={config} historique={historique} {confirmer} onConfigChange={majConfig} onEffacerHistorique={effacerHistorique} />
+      <OptionsView config={config} historique={historique} {confirmer} onConfigChange={majConfig} onEffacerHistorique={effacerHistorique} openUpdates={focusUpdates} discoveredUpdate={availableUpdate} />
     {/if}
 {/snippet}
 
@@ -1036,6 +1138,11 @@
 {/if}
 
 <style>
+  .gd-update-banner { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; border:1px solid color-mix(in srgb, var(--accent) 38%, transparent); background:color-mix(in srgb,var(--accent) 10%, var(--surface)); }
+  .gd-update-banner div { flex:1; display:flex; flex-direction:column; gap:4px; min-width:170px; }
+  .gd-update-banner span { color:var(--muted); font-size:.84rem; }
+  .gd-update-banner button { color:var(--accent); padding:7px 10px; border-radius:9px; border:1px solid color-mix(in srgb,var(--accent) 32%,transparent); cursor:pointer; }
+  .gd-update-banner .gd-update-dismiss { border:0; font-size:20px; }
   main {
     display: flex;
     flex-direction: column;
@@ -1047,7 +1154,7 @@
        prématuré près de la largeur minimale (380px). */
     max-width: min(var(--main-max-width, 900px), 94vw);
     margin: 0 auto;
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-3) var(--space-4);
     position: relative;
     z-index: 1;
   }
@@ -1070,16 +1177,43 @@
     gap: var(--space-4);
   }
 
-  header {
+  .window-chrome {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: var(--space-3);
+    position: sticky;
+    top: 0;
+    z-index: 210;
+    min-height: 48px;
+    width: 100%;
+    padding: 0 10px 0 20px;
+    background: color-mix(in srgb, var(--bg) 95%, var(--card));
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .brand {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: var(--space-2);
+    min-height: 48px;
+  }
+  .brand-logo { display: inline-flex; align-items: center; pointer-events: none; }
+  .brand h1 { pointer-events: none; }
+  .window-drag-space { flex: 1 1 8px; align-self: stretch; min-width: 8px; }
+  .window-navigation { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  @media (max-width: 1050px) {
+    .window-chrome { flex-wrap: wrap; row-gap: 0; }
+    .window-navigation { order: 3; flex: 0 0 100%; justify-content: center; padding-bottom: 7px; }
+    .window-drag-space { order: 1; }
+    .window-chrome :global(.window-controls) { order: 2; }
+  }
+  @media (max-width: 600px) {
+    .window-navigation { flex-wrap: wrap; gap: 6px; }
+    .onglets { width: 100%; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+    .onglets::-webkit-scrollbar { display: none; }
   }
 
   h1 {
@@ -1096,21 +1230,18 @@
     margin-top: calc(var(--space-4) * -1 + var(--space-2));
   }
 
-  .header-droite {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
   .onglets {
     display: flex;
     gap: 4px;
+    min-width: 0;
     background: color-mix(in srgb, var(--input) 70%, transparent);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 3px;
   }
   .onglet {
+    white-space: nowrap;
+    flex: 0 0 auto;
     background: transparent;
     border: none;
     color: var(--muted);

@@ -3,6 +3,10 @@
 // n'est pas importable depuis un autre fichier.
 export interface ActionMenu {
   label: string;
+  /** Nom de section quand un groupe de commandes débute. */
+  groupe?: string;
+  /** Vérifié dans le menu (ex. statut actif). */
+  actif?: boolean;
   /** Composant d'icône Lucide, optionnel. */
   icone?: any;
   action: () => void;

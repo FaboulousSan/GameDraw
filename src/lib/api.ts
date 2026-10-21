@@ -10,6 +10,10 @@ import { migrate } from "./migrations";
 // de tirage vit côté TS dans draw.ts.
 
 export const api = {
+  githubReleaseCheck: (repository: string, channel: "stable" | "beta", currentVersion: string): Promise<GithubRelease | null> =>
+    invoke("github_release_check", { repository, channel, currentVersion }),
+  githubReleaseDownload: (repository: string, tag: string, assetName: string): Promise<string> =>
+    invoke("github_release_download", { repository, tag, assetName }),
   configExists: () => invoke<boolean>("config_exists"),
   loadConfig: async (): Promise<AppConfig> =>
     migrate<AppConfig>("config", await invoke("load_config")),
@@ -90,6 +94,11 @@ export const api = {
    * lien "fenêtre intégrée" (sans clé) proposé dans la Fiche du jeu. */
   steamgriddbSearch: (apiKey: string, query: string) => invoke<RawgGame[]>("steamgriddb_search", { apiKey, query }),
 
+  /** HF5 — SteamGridDB : recherche de jeux puis galerie paginée, sans WebView tierce. */
+  steamgriddbGames: (apiKey: string, query: string) => invoke<SteamGridGame[]>("steamgriddb_games", { apiKey, query }),
+  steamgriddbArtworks: (apiKey: string, gameId: number, format: SteamGridFormat, page: number) =>
+    invoke<SteamGridArtworkPage>("steamgriddb_artworks", { apiKey, gameId, format, page }),
+
   /** Change l'icône de la fenêtre en cours d'exécution (barre des tâches/
    * barre de titre) — PAS l'icône du .exe/raccourci, figée à la compilation. */
   definirIconeFenetre: (variante: string) => invoke<void>("definir_icone_fenetre", { variante }),
@@ -104,4 +113,22 @@ export interface RawgGame {
 export interface SteamGame {
   appid: number;
   nom: string;
+}
+
+/** HF5 — réponses de recherche et galerie SteamGridDB. */
+export interface SteamGridGame { id: number; name: string; }
+export type SteamGridFormat = "portrait" | "landscape" | "square";
+export interface SteamGridArtwork { id: number; url: string; thumb: string; style: string | null; authorName: string | null; }
+export interface SteamGridArtworkPage { images: SteamGridArtwork[]; page: number; total: number; }
+
+/** Métadonnées GitHub Releases contrôlées par le backend Rust. */
+export interface GithubReleaseAsset { name: string; size: number; }
+export interface GithubRelease {
+  version: string;
+  tag: string;
+  title: string;
+  notes: string;
+  htmlUrl: string;
+  publishedAt: string | null;
+  assets: GithubReleaseAsset[];
 }

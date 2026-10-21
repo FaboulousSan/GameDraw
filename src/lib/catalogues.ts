@@ -1,7 +1,7 @@
-// Catalogues prédéfinis pour peupler rapidement une bibliothèque. Listes de
-// départ volontairement courtes et non exhaustives — l'édition de ces
-// catalogues (ajout/suppression par l'utilisateur) reste Phase 7, comme le
-// reste des réglages avancés.
+// Petits catalogues de démonstration pour peupler rapidement une bibliothèque.
+// Les listes complètes incluses dans le projet sont disponibles séparément via
+// Importer > Listes fournies (complètes) : src/lib/catalogues-complets.ts.
+// Tous ces jeux sont indicatifs ; pas de catalogue mondial exhaustif.
 
 export type CatalogueName = "switch1" | "switch2" | "pc";
 

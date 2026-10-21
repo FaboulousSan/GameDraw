@@ -1,31 +1,22 @@
 <script lang="ts">
   import { TriangleAlert } from "@lucide/svelte";
-  import { scale, fade } from "svelte/transition";
+  import { onMount } from "svelte";
   import { langueApp, tr } from "./i18n";
 
   let { message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void } = $props();
 
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") onCancel();
-    if (e.key === "Enter") onConfirm();
-  }
+  let dialogEl: HTMLDialogElement;
+  onMount(() => {
+    dialogEl.showModal();
+    return () => { if (dialogEl?.open) dialogEl.close(); };
+  });
 </script>
 
-<svelte:window onkeydown={onKeydown} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events -- clic-dehors pour
-     fermer est un bonus souris ; le clavier est déjà couvert par Échap
-     (svelte:window ci-dessus) et par les boutons Annuler/Continuer. -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" transition:fade={{ duration: 120 }} onclick={onCancel}>
-  <div
-    class="dialog glass"
-    transition:scale={{ duration: 160, start: 0.94 }}
-    onclick={(e) => e.stopPropagation()}
-    role="alertdialog"
-    aria-modal="true"
-    tabindex="-1"
-  >
+<!-- La confirmation doit elle aussi vivre dans la top-layer, au-dessus de
+     la fiche modale native, sans être cachée derrière elle. -->
+<dialog bind:this={dialogEl} class="confirmation-dialog glass" aria-label={tr($langueApp, "Confirmation", "Confirmation")}
+  oncancel={(event) => { event.preventDefault(); onCancel(); }}>
+  <div class="confirmation-content">
     <TriangleAlert size={22} strokeWidth={2.2} color="var(--warning)" />
     <p class="message">{message}</p>
     <div class="actions">
@@ -33,22 +24,17 @@
       <button class="continuer" onclick={onConfirm}>{tr($langueApp, "Continuer", "Continue")}</button>
     </div>
   </div>
-</div>
+</dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(2px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
+  .confirmation-dialog {
+    position:fixed; inset:0; margin:auto; width:min(420px, calc(100vw - 24px)); max-width:none;
+    max-height:calc(100dvh - 24px); overflow-y:auto; border:1px solid var(--border);
+    border-radius:16px; padding:0; background:var(--card); color:var(--text);
+    box-shadow:0 28px 100px rgba(0,0,0,.6);
   }
-
-  .dialog {
+  .confirmation-dialog::backdrop { background:rgba(0,0,0,.7); backdrop-filter:blur(4px); }
+  .confirmation-content {
     max-width: 360px;
     padding: var(--space-4);
     display: flex;

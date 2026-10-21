@@ -258,6 +258,12 @@ export interface AppConfig {
   // cachés) — décision de conception : la LISTE des succès reste définie
   // par le code, seule leur visibilité est personnalisable.
   badgesDesactives: string[];
+  /** Recherche GitHub Releases ; activée pour les nouvelles installations, désactivable à tout moment. */
+  updatesAutoCheck: boolean;
+  /** L’utilisateur a répondu à la question initiale, même si config.json existe. */
+  updatesConsentAnswered: boolean;
+  updatesGithubRepo: string;
+  updatesChannel: "stable" | "beta";
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -308,6 +314,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   sourcesCoverActives: SOURCES_COVER_PAR_DEFAUT,
   iconeFenetre: "defaut",
   badgesDesactives: [],
+  updatesAutoCheck: false,
+  updatesConsentAnswered: false,
+  updatesGithubRepo: "FaboulousSan/GameDraw",
+  updatesChannel: "stable",
 };
 
 // --- plateformes.json -----------------------------------------------------

@@ -1,5 +1,6 @@
 mod data;
 mod cover_utils;
+mod github_updates;
 
 use data::{AppConfig, Badges, DrawSession, GameLibrary, Historique, Platform};
 use std::path::PathBuf;
@@ -121,10 +122,13 @@ fn log_error(app: AppHandle, message: String) -> Result<(), String> {
 // --- Branding Windows GameDraw 1.0.3 ---------------------------------------
 // HF20 : les petites icones sont DESSINEES pour leur taille et non simplement
 // reduites depuis l'illustration 1024px. ICO EXE multi-resolutions pour le
-// Bureau, 64px pour la fenetre/taskbar DPI et 32px lisible pour le tray.
+// ICO multiresolution pour le Bureau, PNG RGBA 256px pour la fenetre et
+// sa barre des taches DPI (evite de remplacer l'icone haute resolution par
+// un rendu 64px au lancement), 32px distinct pour la zone de notification.
+// La taille physique de la barre des taches reste geree par Windows.
 // Toutes les images sont RGBA alpha et embarquees sans fichiers runtime.
-const ICONE_CLAIRE_RGBA: &[u8] = include_bytes!("../icons/icon-light-sizes/icon-light-64.png");
-const ICONE_SOMBRE_RGBA: &[u8] = include_bytes!("../icons/icon-dark-sizes/icon-dark-64.png");
+const ICONE_CLAIRE_RGBA: &[u8] = include_bytes!("../icons/icon-light-sizes/icon-light-256.png");
+const ICONE_SOMBRE_RGBA: &[u8] = include_bytes!("../icons/icon-dark-sizes/icon-dark-256.png");
 const ICONE_CLAIRE_TRAY_RGBA: &[u8] = include_bytes!("../icons/icon-light-sizes/icon-light-32.png");
 const ICONE_SOMBRE_TRAY_RGBA: &[u8] = include_bytes!("../icons/icon-dark-sizes/icon-dark-32.png");
 const ID_TRAY_GAMEDRAW: &str = "gamedraw-main";
@@ -254,18 +258,17 @@ async fn steam_store_search(app: AppHandle, query: String) -> Result<Vec<RawgGam
     logged(&app, "steam_store_search", result)
 }
 
-// --- Recherche de jaquette — SteamGridDB (clé requise, en complément du -----
-// lien "fenêtre intégrée" côté frontend, pas en remplacement) --------------
-// Contrairement à RAWG (une seule requête), SteamGridDB sépare recherche de
-// jeu et récupération des images ("grids") : deux requêtes par résultat.
-// Limité aux 5 premiers résultats de recherche pour ne pas multiplier les
-// appels réseau à l'excès sur une simple recherche de jaquette.
+// SteamGridDB HF5 : 2 étapes explicites (jeu puis galerie). Aucune WebView
+// tierce ni récupération systématique de 5 galeries à chaque saisie.
+// L'authentification reste dans Rust ; les clés et corps d'erreur HTTP ne sont
+// jamais envoyés aux journaux. Les filtres sont une liste blanche côté backend.
 #[derive(serde::Deserialize)]
 struct SgdbSearchResponse {
     #[serde(default)]
     data: Vec<SgdbGameRaw>,
 }
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SgdbGameRaw {
     id: i64,
     name: String,
@@ -274,62 +277,169 @@ struct SgdbGameRaw {
 struct SgdbGridsResponse {
     #[serde(default)]
     data: Vec<SgdbGridRaw>,
+    #[serde(default)]
+    total: u32,
 }
 #[derive(serde::Deserialize)]
 struct SgdbGridRaw {
+    id: i64,
     url: Option<String>,
     thumb: Option<String>,
+    style: Option<String>,
+    author: Option<SgdbAuthorRaw>,
+}
+#[derive(serde::Deserialize)]
+struct SgdbAuthorRaw {
+    name: Option<String>,
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SgdbArtwork {
+    id: i64,
+    url: String,
+    thumb: String,
+    style: Option<String>,
+    author_name: Option<String>,
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SgdbArtworkPage {
+    images: Vec<SgdbArtwork>,
+    page: u32,
+    total: u32,
+}
+
+fn steamgriddb_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|_| "Impossible de préparer la connexion SteamGridDB.".to_owned())
+}
+
+fn steamgriddb_key(key: &str) -> Result<&str, String> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err("Clé SteamGridDB absente : configure-la dans Options → Connexion.".into());
+    }
+    if trimmed.len() > 512 || trimmed.chars().any(char::is_whitespace) {
+        return Err("Format de clé SteamGridDB incorrect : colle uniquement la clé API, sans 'Bearer' ni espaces.".into());
+    }
+    Ok(trimmed)
+}
+
+async fn steamgriddb_response(resp: reqwest::Response) -> Result<reqwest::Response, String> {
+    match resp.status() {
+        reqwest::StatusCode::UNAUTHORIZED => Err("SteamGridDB HTTP 401 : clé API refusée. Vérifie la clé SteamGridDB dans Options → Connexion.".into()),
+        reqwest::StatusCode::FORBIDDEN => Err("SteamGridDB HTTP 403 : accès refusé pour cette clé API.".into()),
+        reqwest::StatusCode::TOO_MANY_REQUESTS => Err("SteamGridDB HTTP 429 : limite de requêtes atteinte. Réessaie plus tard.".into()),
+        reqwest::StatusCode::NOT_FOUND => Err("SteamGridDB HTTP 404 : ressource introuvable. Essaie un autre titre ou jeu.".into()),
+        status if status.is_server_error() => Err(format!("SteamGridDB HTTP {status} : service indisponible pour le moment.")),
+        status if !status.is_success() => Err(format!("SteamGridDB HTTP {status} : recherche impossible.")),
+        _ => Ok(resp),
+    }
 }
 
 #[tauri::command]
-async fn steamgriddb_search(app: AppHandle, api_key: String, query: String) -> Result<Vec<RawgGame>, String> {
-    if api_key.trim().is_empty() {
-        return Err("Clé API SteamGridDB manquante (Options → Connexion).".into());
-    }
-    let api_key = api_key.trim().to_owned();
-    let result: Result<Vec<RawgGame>, String> = async {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build().map_err(|e| format!("Client SteamGridDB : {e}"))?;
-        let search_url = format!(
-            "https://www.steamgriddb.com/api/v2/search/autocomplete/{}",
-            data::url_encode(&query)
-        );
-        let resp = client
-            .get(&search_url)
-            .bearer_auth(&api_key)
-            .send()
-            .await
-            .map_err(|e| format!("requête SteamGridDB : {e}"))?;
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Err("SteamGridDB HTTP 401 : clé API invalide ou révoquée. Vérifie Options → Connexion (ne colle pas ta clé Steam Web API).".into());
+async fn steamgriddb_games(app: AppHandle, api_key: String, query: String) -> Result<Vec<SgdbGameRaw>, String> {
+    let result: Result<Vec<SgdbGameRaw>, String> = async {
+        let key = steamgriddb_key(&api_key)?;
+        let term = query.trim();
+        if term.is_empty() || term.chars().count() > 120 {
+            return Err("Indique un titre de jeu de 1 à 120 caractères.".into());
         }
-        if resp.status() == reqwest::StatusCode::FORBIDDEN {
-            return Err("SteamGridDB HTTP 403 : accès refusé par le service pour cette clé API.".into());
+        let url = format!("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", data::url_encode(term));
+        let resp = steamgriddb_client()?.get(url).bearer_auth(key).send().await
+            .map_err(|_| "Connexion à SteamGridDB impossible ou délai dépassé (20 s).".to_owned())?;
+        // Une recherche sans résultat peut retourner 404 selon le service.
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(vec![]);
         }
-        if !resp.status().is_success() {
-            return Err(format!("SteamGridDB a répondu HTTP {}.", resp.status()));
-        }
-        let search_data: SgdbSearchResponse = resp.json().await.map_err(|e| format!("réponse SteamGridDB : {e}"))?;
+        let resp = steamgriddb_response(resp).await?;
+        let parsed: SgdbSearchResponse = resp.json().await
+            .map_err(|_| "Réponse de recherche SteamGridDB illisible.".to_owned())?;
+        Ok(parsed.data.into_iter().take(20).collect())
+    }.await;
+    logged(&app, "steamgriddb_games", result)
+}
 
-        let mut jeux = Vec::new();
-        for jeu in search_data.data.into_iter().take(5) {
-            let grids_url = format!("https://www.steamgriddb.com/api/v2/grids/game/{}", jeu.id);
-            let cover_url = match client.get(&grids_url).bearer_auth(&api_key).send().await {
-                Ok(r) if r.status().is_success() => r
-                    .json::<SgdbGridsResponse>()
-                    .await
-                    .ok()
-                    .and_then(|g| g.data.into_iter().next())
-                    .and_then(|g| g.thumb.or(g.url)),
-                _ => None,
-            };
-            jeux.push(RawgGame { id: jeu.id, nom: jeu.name, cover_url });
-        }
-        Ok(jeux)
+#[tauri::command]
+async fn steamgriddb_artworks(
+    app: AppHandle, api_key: String, game_id: i64, format: String, page: u32,
+) -> Result<SgdbArtworkPage, String> {
+    let result: Result<SgdbArtworkPage, String> = async {
+        let key = steamgriddb_key(&api_key)?;
+        if game_id <= 0 { return Err("Identifiant SteamGridDB invalide.".into()); }
+        if page > 100 { return Err("Limite de pagination atteinte.".into()); }
+        let dimensions = match format.as_str() {
+            "portrait" => "600x900,342x482,660x930",
+            "landscape" => "460x215,920x430",
+            "square" => "512x512,1024x1024",
+            _ => return Err("Format de jaquette inconnu.".into()),
+        };
+        let url = format!("https://www.steamgriddb.com/api/v2/grids/game/{game_id}");
+        let page_text = page.to_string();
+        let resp = steamgriddb_client()?.get(url)
+            .query(&[("dimensions", dimensions), ("types", "static"), ("nsfw", "false"),
+                ("humor", "false"), ("epilepsy", "false"), ("limit", "24"), ("page", page_text.as_str())])
+            .bearer_auth(key)
+            .send().await
+            .map_err(|_| "Impossible de charger les jaquettes SteamGridDB (délai 20 s).".to_owned())?;
+        let resp = steamgriddb_response(resp).await?;
+        let parsed: SgdbGridsResponse = resp.json().await
+            .map_err(|_| "Réponse de galerie SteamGridDB illisible.".to_owned())?;
+        let images = parsed.data.into_iter().filter_map(|item| {
+            // Ne jamais fournir un lien non HTTPS au navigateur ou au téléchargeur.
+            let url = item.url?;
+            if !url.starts_with("https://") { return None; }
+            let thumb = item.thumb.filter(|t| t.starts_with("https://")).unwrap_or_else(|| url.clone());
+            Some(SgdbArtwork {
+                id: item.id, url, thumb, style: item.style,
+                author_name: item.author.and_then(|a| a.name),
+            })
+        }).collect();
+        Ok(SgdbArtworkPage { images, total: parsed.total, page })
+    }.await;
+    logged(&app, "steamgriddb_artworks", result)
+}
+
+// Compatibilité de l'ancienne commande pour les installations HF4 qui
+// l'utiliseraient encore : elle n'est plus appelée par la nouvelle interface.
+#[tauri::command]
+async fn steamgriddb_search(app: AppHandle, api_key: String, query: String) -> Result<Vec<RawgGame>, String> {
+    let games = steamgriddb_games(app.clone(), api_key.clone(), query).await?;
+    let mut result = Vec::new();
+    for game in games.into_iter().take(5) {
+        let cover_url = steamgriddb_artworks(app.clone(), api_key.clone(), game.id, "portrait".into(), 0)
+            .await.ok().and_then(|r| r.images.into_iter().next()).map(|a| a.url);
+        result.push(RawgGame { id: game.id, nom: game.name, cover_url });
     }
-    .await;
-    logged(&app, "steamgriddb_search", result)
+    Ok(result)
+}
+
+#[cfg(test)]
+mod steamgriddb_hf5_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_missing_or_spaced_keys_without_leaking_them() {
+        assert!(steamgriddb_key(" ").is_err());
+        assert!(steamgriddb_key("Bearer invalid").is_err());
+        assert_eq!(steamgriddb_key("  sgdb-test-key  ").unwrap(), "sgdb-test-key");
+    }
+
+    #[test]
+    fn parses_game_matches_and_artwork_page_samples() {
+        let games: SgdbSearchResponse = serde_json::from_str(
+            r#"{"success":true,"data":[{"id":11,"name":"Portal"},{"id":22,"name":"Portal 2"}]}"#
+        ).unwrap();
+        assert_eq!(games.data.len(), 2);
+        let images: SgdbGridsResponse = serde_json::from_str(
+            r#"{"total":2,"data":[{"id":123,"url":"https://cdn.example.org/original.png","thumb":"https://cdn.example.org/thumbnail.png","style":"alternate","author":{"name":"Artist"}}]}"#
+        ).unwrap();
+        assert_eq!(images.total, 2);
+        assert_eq!(images.data[0].author.as_ref().unwrap().name.as_deref(), Some("Artist"));
+    }
 }
 
 /// Télécharge et valide une jaquette. La réponse doit être une vraie image.
@@ -850,6 +960,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            github_updates::github_release_check,
+            github_updates::github_release_download,
             config_exists,
             load_config,
             save_config,
@@ -878,6 +990,8 @@ pub fn run() {
             import_backup,
             steam_store_search,
             steamgriddb_search,
+            steamgriddb_games,
+            steamgriddb_artworks,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de GameDraw");

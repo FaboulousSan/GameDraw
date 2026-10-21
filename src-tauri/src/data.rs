@@ -125,7 +125,19 @@ pub struct AppConfig {
     // cachés) — liste d'ids, vide par défaut (tous visibles).
     #[serde(rename = "badgesDesactives", default)]
     pub badges_desactives: Vec<String>,
+    // v1.0.5 — Recherche facultative GitHub Releases ; aucun accès réseau par défaut.
+    #[serde(rename = "updatesAutoCheck", default)]
+    pub updates_auto_check: bool,
+    #[serde(rename = "updatesConsentAnswered", default)]
+    pub updates_consent_answered: bool,
+    #[serde(rename = "updatesGithubRepo", default = "defaut_updates_github_repo")]
+    pub updates_github_repo: String,
+    #[serde(rename = "updatesChannel", default = "defaut_updates_channel")]
+    pub updates_channel: String,
 }
+
+fn defaut_updates_channel() -> String { "stable".into() }
+fn defaut_updates_github_repo() -> String { "FaboulousSan/GameDraw".into() }
 
 fn defaut_langue() -> String {
     "fr".into()
@@ -299,6 +311,10 @@ impl Default for AppConfig {
             steamgriddb_api_key: String::new(),
             icone_fenetre: defaut_icone_fenetre(),
             badges_desactives: Vec::new(),
+            updates_auto_check: false,
+            updates_consent_answered: false,
+            updates_github_repo: defaut_updates_github_repo(),
+            updates_channel: defaut_updates_channel(),
         }
     }
 }

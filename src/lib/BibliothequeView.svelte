@@ -1,13 +1,16 @@
 <script lang="ts">
   import CoverImage from "./CoverImage.svelte";
   import { scale } from "svelte/transition";
-  import { Plus, Search, LibraryBig, Gamepad2, Upload, Download, SquareCheck, Square, Trash2, X, Heart, Award, Star, Trophy, RotateCcw } from "@lucide/svelte";
+  import { Plus, Search, LibraryBig, Gamepad2, Upload, Download, SquareCheck, Square, Trash2, X, Heart, Award, Star, Trophy, RotateCcw, Copy, CheckCircle2, Layers3, Tags } from "@lucide/svelte";
   import { ICONE_NOTATION_COMPOSANTS } from "./icones-notation";
   import { save, open } from "@tauri-apps/plugin-dialog";
   import type { AppConfig, Game, GameLibrary, Platform, StatutJeu } from "./types";
   import {
     ajouterJeu,
     modifierJeu,
+    modifierPlusieursJeux,
+    ajouterTagsPlusieursJeux,
+    dupliquerJeu,
     supprimerJeu,
     ajouterPlusieursJeux,
     supprimerPlusieursJeux,
@@ -21,6 +24,8 @@
   import { api } from "./api";
   import SteamImportDialog from "./SteamImportDialog.svelte";
   import ImportListeDialog from "./ImportListeDialog.svelte";
+  import CatalogueInclusDialog from "./CatalogueInclusDialog.svelte";
+  import type { PackInclusId } from "./catalogues-complets";
   import AjouterDepuisRawgDialog from "./AjouterDepuisRawgDialog.svelte";
   import AjouterDepuisSteamDialog from "./AjouterDepuisSteamDialog.svelte";
   import MenuContextuel from "./MenuContextuel.svelte";
@@ -35,6 +40,7 @@
     config,
     confirmer,
     onLibraryChange,
+    onImporterPacksInclus,
     onConfigChange,
     onPlatformChange,
     onOuvrirJeu,
@@ -45,6 +51,7 @@
     config: AppConfig;
     confirmer: (message: string) => Promise<boolean>;
     onLibraryChange: (lib: GameLibrary) => void;
+    onImporterPacksInclus: (id: PackInclusId) => Promise<{ ajoutes: number; ignores: number }>;
     onConfigChange: (cfg: AppConfig) => void;
     onPlatformChange: (id: string) => void;
     onOuvrirJeu: (gameId: string) => void;
@@ -58,11 +65,14 @@
   let rawgAjoutOuvert = $state(false);
   let steamAjoutOuvert = $state(false);
   let importListeOuvert = $state(false);
+  let catalogueInclusOuvert = $state(false);
   let importerOuvert = $state(false);
   let messageImport = $state<string | null>(null);
   let messageImportTimeout: ReturnType<typeof setTimeout> | null = null;
   let modeSelection = $state(false);
   let jeuxSelectionnes = $state<Set<string>>(new Set());
+  let tagEdition = $state<{ ids: string[]; nom: string } | null>(null);
+  let tagsSaisie = $state("");
 
   const IconeNote = $derived(ICONE_NOTATION_COMPOSANTS[config.iconeNotation]);
 
@@ -110,57 +120,98 @@
   }
 
   // --- Menu contextuel (clic droit sur une carte de jeu) -------------------
-  let menuJeu = $state<{ x: number; y: number; actions: ActionMenu[] } | null>(null);
+  let menuJeu = $state<{ x: number; y: number; titre: string; actions: ActionMenu[] } | null>(null);
+
+  function appliquerAuGroupe(ids: string[], patch: Partial<Game>) {
+    if (!library || ids.length === 0) return;
+    onLibraryChange(modifierPlusieursJeux(library, ids, patch));
+    afficherMessageImport(config.langue === "en" ? `${ids.length} game(s) updated.` : `${ids.length} jeu(x) mis à jour.`);
+  }
 
   function ouvrirMenuJeu(e: MouseEvent, jeu: Game) {
     e.preventDefault();
     e.stopPropagation();
     if (!library) return;
     const lib = library;
-
-    const actions: ActionMenu[] = [
-      { label: tr(config.langue, "Ouvrir la fiche", "Open details"), icone: Award, action: () => onOuvrirJeu(jeu.id) },
-      {
-        label: jeu.coupDeCoeur ? tr(config.langue, "Retirer le coup de cœur", "Remove favorite") : tr(config.langue, "Marquer coup de cœur", "Mark as favorite"),
-        icone: Heart,
-        action: () => onLibraryChange(modifierJeu(lib, jeu.id, { coupDeCoeur: !jeu.coupDeCoeur })),
-      },
-      {
-        label: jeu.envieDeFaire ? tr(config.langue, "Retirer « envie de faire »", "Remove want to play") : tr(config.langue, "Marquer « envie de faire »", "Mark as want to play"),
-        icone: Star,
-        action: () => onLibraryChange(modifierJeu(lib, jeu.id, { envieDeFaire: !jeu.envieDeFaire })),
-      },
-      {
-        label: jeu.complete100 ? tr(config.langue, "Retirer le 100%", "Remove 100%") : tr(config.langue, "Marquer à 100%", "Mark as 100%"),
-        icone: Trophy,
-        action: () => onLibraryChange(modifierJeu(lib, jeu.id, { complete100: !jeu.complete100 })),
-      },
-      {
-        label: jeu.dejaFait ? tr(config.langue, "Remettre dans le pool", "Put back in draw pool") : tr(config.langue, "Retirer du pool de tirage", "Remove from draw pool"),
-        icone: RotateCcw,
-        separateurAvant: true,
-        action: () => onLibraryChange(modifierJeu(lib, jeu.id, { dejaFait: !jeu.dejaFait })),
-      },
-      {
-        label: modeSelection ? tr(config.langue, "Sélectionner / désélectionner", "Select / deselect") : tr(config.langue, "Sélectionner ce jeu", "Select this game"),
-        icone: SquareCheck,
-        action: () => {
+    // Sur un jeu déjà sélectionné, le clic droit agit sur toute la sélection.
+    // Sur un autre jeu, il ne modifie jamais involontairement la sélection existante.
+    const ids = modeSelection && jeuxSelectionnes.size > 1 && jeuxSelectionnes.has(jeu.id)
+      ? [...jeuxSelectionnes].filter((id) => lib.jeux.some((j) => j.id === id)) : [jeu.id];
+    const groupe = ids.length > 1;
+    const elements = lib.jeux.filter((j) => ids.includes(j.id));
+    const unSeul = (predicate: (j: Game) => boolean) => elements.every(predicate);
+    const actions: ActionMenu[] = [];
+    if (!groupe) {
+      actions.push(
+        { label: tr(config.langue, "Ouvrir la fiche / Modifier", "Open / Edit details"), icone: Award, action: () => onOuvrirJeu(jeu.id) },
+        { label: tr(config.langue, "Dupliquer la fiche", "Duplicate game"), icone: Copy, action: () => {
+          if (!library) return;
+          onLibraryChange(dupliquerJeu(library, jeu.id));
+          afficherMessageImport(tr(config.langue, "Fiche dupliquée : le backlog grandit encore !", "Game duplicated: your backlog grows again!"));
+        } },
+      );
+    }
+    // Seuls les statuts réellement configurés sont proposés, sans statut fictif.
+    for (const [i, statut] of config.statuts.filter((s) => s.visible).entries()) {
+      actions.push({
+        label: labelStatut(config.langue, statut.id, statut.label, statut.integre),
+        groupe: i === 0 ? tr(config.langue, "Changer le statut", "Set status") : undefined,
+        actif: unSeul((j) => j.statut === statut.id),
+        icone: CheckCircle2,
+        action: () => appliquerAuGroupe(ids, { statut: statut.id }),
+      });
+    }
+    const bascules: { cle: "coupDeCoeur" | "envieDeFaire" | "complete100" | "dejaFait"; vrai: string; faux: string; icone: ActionMenu["icone"] }[] = [
+      { cle: "coupDeCoeur", vrai: tr(config.langue, "Retirer des favoris", "Remove favorites"), faux: tr(config.langue, "Ajouter aux favoris", "Add to favorites"), icone: Heart },
+      { cle: "envieDeFaire", vrai: tr(config.langue, "Retirer « envie de faire »", "Remove want to play"), faux: tr(config.langue, "Marquer « envie de faire »", "Mark want to play"), icone: Star },
+      { cle: "complete100", vrai: tr(config.langue, "Retirer le 100 %", "Remove 100%"), faux: tr(config.langue, "Marquer à 100 %", "Mark 100%"), icone: Trophy },
+      { cle: "dejaFait", vrai: tr(config.langue, "Réintégrer au tirage", "Include in draw pool"), faux: tr(config.langue, "Exclure du cycle de tirage", "Exclude from draw cycle"), icone: RotateCcw },
+    ];
+    for (const [i, option] of bascules.entries()) {
+      const tousActifs = unSeul((j) => Boolean(j[option.cle]));
+      actions.push({
+        label: tousActifs ? option.vrai : option.faux,
+        groupe: i === 0 ? tr(config.langue, "Actions rapides", "Quick actions") : undefined,
+        icone: option.icone,
+        actif: tousActifs,
+        action: () => appliquerAuGroupe(ids, { [option.cle]: !tousActifs } as Partial<Game>),
+      });
+    }
+    actions.push({
+      label: tr(config.langue, "Ajouter des tags…", "Add tags…"),
+      icone: Tags,
+      groupe: tr(config.langue, "Organisation", "Organization"),
+      action: () => { tagsSaisie = ""; tagEdition = { ids, nom: groupe ? `${ids.length} jeux` : jeu.nom }; },
+    });
+    if (!groupe) {
+      actions.push({ label: tr(config.langue, "Sélectionner / désélectionner", "Select / deselect"), icone: SquareCheck,
+        groupe: tr(config.langue, "Sélection", "Selection"), action: () => {
           if (!modeSelection) modeSelection = true;
           basculerSelection(jeu.id);
-        },
+        } });
+    } else {
+      actions.push({ label: tr(config.langue, "Désélectionner tout", "Deselect all"), icone: Square,
+        groupe: tr(config.langue, "Sélection", "Selection"), action: toutDeselectionner });
+    }
+    actions.push({
+      label: groupe ? tr(config.langue, `Supprimer les ${ids.length} jeux…`, `Delete ${ids.length} games…`)
+        : tr(config.langue, "Supprimer ce jeu…", "Delete this game…"),
+      icone: Trash2,
+      danger: true,
+      separateurAvant: true,
+      action: async () => {
+        const ok = await confirmer(groupe
+          ? tr(config.langue, `Supprimer définitivement ${ids.length} jeux sélectionnés ?`, `Delete ${ids.length} selected games permanently?`)
+          : tr(config.langue, `Supprimer « ${jeu.nom} » de la bibliothèque ?`, `Delete “${jeu.nom}” from the library?`));
+        if (!ok || !library) return;
+        onLibraryChange(supprimerPlusieursJeux(library, ids));
+        jeuxSelectionnes = new Set([...jeuxSelectionnes].filter((id) => !ids.includes(id)));
+        afficherMessageImport(tr(config.langue, "Jeu(x) supprimé(s).", "Game(s) deleted."));
       },
-      {
-        label: tr(config.langue, "Supprimer ce jeu", "Delete this game"),
-        icone: Trash2,
-        danger: true,
-        separateurAvant: true,
-        action: async () => {
-          const ok = await confirmer(config.langue === "en" ? `Delete “${jeu.nom}” from the library?` : `Supprimer « ${jeu.nom} » de la bibliothèque ?`);
-          if (ok) onLibraryChange(supprimerJeu(lib, jeu.id));
-        },
-      },
-    ];
-    menuJeu = { x: e.clientX, y: e.clientY, actions };
+    });
+    menuJeu = { x: e.clientX, y: e.clientY, titre: groupe
+      ? tr(config.langue, `${ids.length} jeux sélectionnés`, `${ids.length} selected games`) : jeu.nom,
+      actions };
   }
 
   function basculerSelection(gameId: string) {
@@ -168,6 +219,15 @@
     if (s.has(gameId)) s.delete(gameId);
     else s.add(gameId);
     jeuxSelectionnes = s;
+  }
+
+  function validerTags() {
+    if (!tagEdition || !library || !tagsSaisie.trim()) return;
+    const nombre = tagEdition.ids.length;
+    onLibraryChange(ajouterTagsPlusieursJeux(library, tagEdition.ids, tagsSaisie));
+    tagEdition = null;
+    tagsSaisie = "";
+    afficherMessageImport(tr(config.langue, `Tags ajoutés sur ${nombre} jeu(x).`, `Tags added to ${nombre} game(s).`));
   }
 
   function toutSelectionner() {
@@ -295,6 +355,7 @@
         <div class="menu-catalogue">
           <button onclick={() => { steamOuvert = true; importerOuvert = false; }}>{tr(config.langue, "Depuis Steam", "From Steam")}</button>
           <button onclick={() => { importListeOuvert = true; importerOuvert = false; }}>Liste / CSV</button>
+          <button onclick={() => { catalogueInclusOuvert = true; importerOuvert = false; }}>{tr(config.langue, "Listes fournies (complètes)", "Included game lists (full)")}</button>
           <button onclick={() => { importerZip(); importerOuvert = false; }}>Archive .zip</button>
         </div>
       {/if}
@@ -324,6 +385,12 @@
         <button class="btn-selection" onclick={toutDeselectionner}>
           <Square size={14} strokeWidth={2.2} />
           {tr(config.langue, "Tout décocher", "Deselect all")}
+        </button>
+        <button class="btn-selection" onclick={() => appliquerAuGroupe([...jeuxSelectionnes], { statut: "EnCours" })} disabled={jeuxSelectionnes.size === 0} title={tr(config.langue, "Marquer en cours", "Mark in progress")}>
+          <CheckCircle2 size={14} />{tr(config.langue, "En cours", "In progress")}
+        </button>
+        <button class="btn-selection" onclick={() => appliquerAuGroupe([...jeuxSelectionnes], { dejaFait: true })} disabled={jeuxSelectionnes.size === 0}>
+          <Layers3 size={14} />{tr(config.langue, "Exclure du cycle", "Exclude from cycle")}
         </button>
         <button class="btn-selection danger" onclick={supprimerSelection} disabled={jeuxSelectionnes.size === 0}>
           <Trash2 size={14} strokeWidth={2.2} />
@@ -358,6 +425,10 @@
       <p class="sous-titre-vide">
         {tr(config.langue, "Ajoute un jeu manuellement ci-dessus, ou importe un catalogue prédéfini pour démarrer rapidement.", "Add a game manually above, or import a predefined catalog to get started quickly.")}
       </p>
+      <button class="btn-catalogue" onclick={() => (catalogueInclusOuvert = true)}>
+        <LibraryBig size={16} />
+        {tr(config.langue, "Importer les listes de jeux fournies", "Import included game lists")}
+      </button>
     </div>
   {:else if jeuxFiltres.length === 0}
     <p class="aucun-resultat">
@@ -425,11 +496,31 @@
   <ImportListeDialog statutsConnus={config.statuts} onImport={importerLignesListe} onClose={() => (importListeOuvert = false)} />
 {/if}
 
+{#if catalogueInclusOuvert}
+  <CatalogueInclusDialog {config} onImport={onImporterPacksInclus} onClose={() => (catalogueInclusOuvert = false)} />
+{/if}
+
 {#if rawgAjoutOuvert}
   <AjouterDepuisRawgDialog rawgApiKey={config.rawgApiKey} onAjouter={ajouterJeuAvecJaquette} onClose={() => (rawgAjoutOuvert = false)} />
 {/if}
 {#if menuJeu}
-  <MenuContextuel x={menuJeu.x} y={menuJeu.y} actions={menuJeu.actions} onClose={() => (menuJeu = null)} />
+  <MenuContextuel x={menuJeu.x} y={menuJeu.y} titre={menuJeu.titre} actions={menuJeu.actions} onClose={() => (menuJeu = null)} />
+{/if}
+
+{#if tagEdition}
+  <div class="tags-overlay" role="presentation">
+    <div class="tags-dialog" role="dialog" aria-modal="true" aria-labelledby="tags-dialog-title">
+      <div class="tags-dialog-titre"><Tags size={19}/><strong id="tags-dialog-title">{tr(config.langue, "Ajouter des tags", "Add tags")}</strong></div>
+      <p>{tagEdition.nom}</p>
+      <label for="gd-context-tags">{tr(config.langue, "Tags séparés par des virgules", "Comma-separated tags")}</label>
+      <input id="gd-context-tags" type="text" bind:value={tagsSaisie} placeholder={tr(config.langue, "Ex. RPG, coop, à découvrir", "E.g. RPG, co-op, to discover")} onkeydown={(e) => { if (e.key === "Enter") validerTags(); }} />
+      <small>{tr(config.langue, "Les tags existants sont conservés ; les doublons sont ignorés.", "Existing tags are kept; duplicates are ignored.")}</small>
+      <div class="tags-actions">
+        <button onclick={() => (tagEdition = null)}>{tr(config.langue, "Annuler", "Cancel")}</button>
+        <button class="tags-confirmer" disabled={!tagsSaisie.trim()} onclick={validerTags}>{tr(config.langue, "Ajouter", "Add")}</button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 {#if steamAjoutOuvert}
@@ -820,4 +911,17 @@
     padding: 2px;
     display: flex;
   }
+
+  .tags-overlay { position:fixed; inset:0; z-index:600; display:grid; place-items:center; padding:18px; background:rgba(8,9,18,.72); backdrop-filter:blur(8px); }
+  .tags-dialog { width:min(420px,100%); padding:22px; border-radius:16px; display:flex; flex-direction:column; gap:12px; background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow:0 25px 70px rgba(0,0,0,.45); }
+  .tags-dialog-titre { display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-size:1.1rem; }
+  .tags-dialog p { color:var(--muted); font-size:.85rem; margin:0; }
+  .tags-dialog label { font-size:.82rem; font-weight:600; }
+  .tags-dialog input { width:100%; color:var(--text); background:var(--input); border:1px solid var(--border); border-radius:9px; padding:11px; }
+  .tags-dialog input:focus-visible { outline:2px solid var(--accent); }
+  .tags-dialog small { color:var(--muted); line-height:1.5; }
+  .tags-actions { display:flex; justify-content:flex-end; gap:9px; }
+  .tags-actions button { background:var(--input); border:1px solid var(--border); border-radius:9px; color:var(--text); font-family:var(--font-display); padding:8px 14px; cursor:pointer; }
+  .tags-actions .tags-confirmer { background:var(--accent); border-color:var(--accent); color:var(--darkbg); font-weight:800; }
+  .tags-actions button:disabled { opacity:.45; cursor:not-allowed; }
 </style>

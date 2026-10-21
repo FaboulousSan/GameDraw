@@ -1,7 +1,9 @@
 {
   "identifier": "default",
   "description": "Capacités de la fenêtre principale de GameDraw. Ajouter ce fichier remplace la capacité implicite de Tauri — core:default est donc explicitement listé pour ne rien perdre des permissions de base (fenêtre, app).",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -9,7 +11,13 @@
     "notification:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "opener:allow-open-url",
-    "core:webview:allow-create-webview-window"
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging",
+    "opener:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus"
   ]
 }

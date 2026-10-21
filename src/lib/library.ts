@@ -65,6 +65,45 @@ export function modifierJeu(library: GameLibrary, gameId: string, patch: Partial
   return { ...library, jeux: library.jeux.map((j) => (j.id === gameId ? { ...j, ...patch } : j)) };
 }
 
+/** Opération groupée immuable. Les identifiants hors bibliothèque sont ignorés. */
+export function modifierPlusieursJeux(library: GameLibrary, ids: readonly string[], patch: Partial<Game>): GameLibrary {
+  const cible = new Set(ids);
+  // Les champs d'identité ne doivent jamais être partagés/écrasés par une action groupée.
+  const { id: _id, nom: _nom, ...modifications } = patch;
+  return { ...library, jeux: library.jeux.map((j) => cible.has(j.id) ? { ...j, ...modifications } : j) };
+}
+
+/** Ajoute un ou plusieurs tags sans doublon, sans remplacer les tags présents. */
+export function ajouterTagsPlusieursJeux(library: GameLibrary, ids: readonly string[], nouveaux: string): GameLibrary {
+  const cible = new Set(ids);
+  const ajouts = nouveaux.split(",").map((t) => t.trim()).filter(Boolean);
+  if (!cible.size || !ajouts.length) return library;
+  return { ...library, jeux: library.jeux.map((jeu) => {
+    if (!cible.has(jeu.id)) return jeu;
+    const liste = jeu.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const presents = new Set(liste.map((t) => t.toLocaleLowerCase()));
+    for (const tag of ajouts) {
+      const cle = tag.toLocaleLowerCase();
+      if (!presents.has(cle)) { liste.push(tag); presents.add(cle); }
+    }
+    return { ...jeu, tags: liste.join(", ") };
+  }) };
+}
+
+/** Duplique une fiche avec nouvel identifiant ; n'altère pas l'original. */
+export function dupliquerJeu(library: GameLibrary, gameId: string): GameLibrary {
+  const source = library.jeux.find((j) => j.id === gameId);
+  if (!source) return library;
+  const copie: Game = {
+    ...source,
+    id: nouvelId(),
+    nom: `${source.nom} (copie)`,
+    dejaFait: false,
+    defis: source.defis.map((defi) => ({ ...defi })),
+  };
+  return { ...library, jeux: [...library.jeux, copie] };
+}
+
 /** Filtre les jeux par texte de recherche (nom, insensible à la casse). */
 export function filtrerJeux(jeux: Game[], recherche: string): Game[] {
   const q = recherche.trim().toLowerCase();

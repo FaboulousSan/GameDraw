@@ -1,13 +1,15 @@
 <div align="center">
   <img src="assets/gamedraw-logo.svg" alt="GameDraw" width="150" />
 
-# 🎲 GameDraw 1.0.4
+# 🎲 GameDraw 1.0.6
 
 **Tu as des jeux. Beaucoup de jeux. GameDraw t'aide à choisir lequel lancer.**
 
 *Windows · Français / English · Local-first · sans compte obligatoire*
 
 Créé par **Faboulous San**.
+
+**Langues de la documentation :** 🇫🇷 Français (ce fichier) · 🇬🇧 [English — README.en.md](README.en.md).
 </div>
 
 ---
@@ -15,6 +17,32 @@ Créé par **Faboulous San**.
 > **Le problème :** « Je joue à quoi ce soir ? »  
 > **La méthode classique :** regarder sa bibliothèque pendant 40 minutes, puis relancer le même jeu.  
 > **La méthode GameDraw :** laisser le hasard faire le sale boulot.
+
+
+**Version 1.0.6 — [CHANGELOG](CHANGELOG.md) :** menu sur les jaquettes, navigation SteamGridDB, confirmation d’import et paramètres GitHub simplifiés.
+
+## 🔄 Mises à jour GitHub — GameDraw 1.0.6
+
+**Au premier lancement**, juste après le choix de la langue, GameDraw demande : **« Souhaites-tu vérifier automatiquement les mises à jour au démarrage ? »** Tu peux répondre **Oui** ou **Non**, sans télécharger ni installer quoi que ce soit. Avant cette réponse, GameDraw ne vérifie pas GitHub. Le choix est sauvegardé et peut être modifié dans **Options → Mises à jour**. Les utilisateurs ayant déjà une configuration conservent leur choix existant.
+
+Tu peux maintenant rechercher les nouvelles versions **directement dans GameDraw**. Dans **Options → Mises à jour** :
+
+1. Le dépôt **[FaboulousSan/GameDraw](https://github.com/FaboulousSan/GameDraw/)** est déjà configuré. Aucun token n'est requis pour consulter ses releases publiques.
+2. Sélectionne **Stable** (releases finales) ou **Bêta** (inclut les préversions).
+3. Clique sur **Rechercher une mise à jour** pour consulter la version, les nouveautés et les installateurs Windows publiés.
+4. Sélectionne un `.exe`/`.msi` GameDraw et clique sur **Télécharger dans Windows**. Confirme : une **barre de progression réelle** indique le pourcentage et le volume téléchargé ; le fichier arrive dans **Téléchargements** sans écraser un téléchargement existant.
+5. Installe-le **manuellement** après contrôle de sa provenance. GameDraw ne lance jamais l'installateur à ta place en 1.0.6.
+
+### Détection automatique désactivable
+
+Sur une **nouvelle installation**, la recherche au démarrage est **activée par défaut**, mais tu peux la désactiver dans Options → Mises à jour. Les préférences enregistrées lors d'une mise à jour de GameDraw sont **préservées** (un ancien réglage « désactivé » reste désactivé). Une seule requête GitHub est effectuée au lancement si l'option est active.
+
+Lorsqu'une version plus récente existe, GameDraw présente une **notification animée** montrant `version actuelle → nouvelle version`, une synthèse des nouveautés, et les choix **« Découvrir la mise à jour » / « Plus tard »**. Les animations respectent le réglage système « Réduire les animations ». Utilise **« Tester la notification animée »** dans Options → Mises à jour pour voir son rendu immédiatement, même si aucune nouvelle version GitHub n'est disponible ; cet aperçu est explicitement marqué comme démonstration. Si les notifications Windows sont déjà autorisées, une notification système peut aussi s'afficher, sans redemander d'autorisation.
+
+La détection **n'entraîne jamais de téléchargement ni d'installation silencieuse**. Désactive-la pour ne plus contacter GitHub au démarrage ; la recherche manuelle demeure disponible. GameDraw ne propose jamais une version antérieure à celle déjà installée.
+
+L'**installation réellement intégrée et signée** demande la configuration des clés de signature officielles Tauri et de la chaîne de publication GitHub. Voir le [guide d'intégration bêta](docs/IMPORT-BETA-UPDATER-1.0.5.md) et la [procédure de mise à jour](docs/MAJ-GITHUB-1.0.5-FR.md).
+
 
 ## 👀 Aperçu
 
@@ -210,13 +238,13 @@ GameDraw existe sous trois formes.
 
 | Version | Fichier | Idéal pour |
 |---|---|---|
-| 🧙 **Installateur Windows** | `GameDraw_1.0.4_x64-setup.exe` | Installation classique et simple |
-| 🏢 **MSI** | `GameDraw_1.0.3_x64_en-US.msi` | Installation administrée / Windows Installer |
+| 🧙 **Installateur Windows** | `GameDraw_1.0.6_x64-setup.exe` | Installation classique et simple |
+| 🏢 **MSI** | `GameDraw_1.0.4_x64_en-US.msi` | Installation administrée / Windows Installer |
 | 🧳 **Portable** | `Portable\GameDraw.exe` | Lancer GameDraw sans installation |
 
 ### 🧙 Installateur classique
 
-1. Lance `GameDraw_1.0.4_x64-setup.exe`.
+1. Lance `GameDraw_1.0.6_x64-setup.exe`.
 2. Suis l'assistant Windows.
 3. Lance **GameDraw**.
 4. Essaie de ne pas passer 25 minutes à choisir ton thème avant ton premier tirage.
@@ -316,7 +344,7 @@ Pas besoin d'importer une armée entière à chaque fois. Pour ajouter quelques 
 - **Depuis Steam** : recherche d'un jeu côté Steam ;
 - **Catalogues prédéfinis** : pratique pour amorcer rapidement une plateforme.
 
-Steam, RAWG et SteamGridDB peuvent nécessiter une clé API ou un identifiant propre au service concerné.
+L’import d’une bibliothèque Steam nécessite une clé API Steam et un SteamID64 ; la recherche de jaquette Steam fonctionne sans clé. RAWG et SteamGridDB nécessitent chacun leur propre clé API pour les recherches intégrées.
 
 👉 Guide : [`docs/GameDraw-Cles-API.md`](docs/GameDraw-Cles-API.md)
 
@@ -395,7 +423,7 @@ Pas besoin de créer un compte GameDraw pour choisir entre « finir ce RPG de 12
 
 # 👤 À propos
 
-**GameDraw 1.0.3**  
+**GameDraw 1.0.4**  
 Créateur : **Faboulous San**  
 © 2026 Faboulous San. Tous droits réservés.
 
@@ -425,6 +453,24 @@ Windows met les icônes en cache, notamment dans la barre des tâches. Si tu voi
 La nouvelle icône GameDraw privilégie **la lisibilité** : dessin plus simple en 16/20/24/32 px pour la barre des tâches, rendu détaillé en 48/64/128/256 px pour les grandes icônes. Une icône 4K miniature n'a pas de super-pouvoirs : chaque pixel doit avoir une utilité.
 
 
+### 🔍 Atelier SteamGridDB — HF5 (GameDraw 1.0.4)
+
+Le bouton **Atelier SteamGridDB · rechercher des images** est accessible dans **Bibliothèque → ouvrir un jeu → Modifier (crayon)**. Une **vraie boîte de dialogue au premier plan** s'ouvre, à la taille de la fenêtre, avec une croix toujours accessible et la touche **Échap**. Le contenu défile même sur un petit écran ou avec un zoom Windows à 125/150 %.
+
+**Avec une clé API SteamGridDB :**
+
+1. Dans **Options → Connexion**, active SteamGridDB, colle ta **clé API SteamGridDB personnelle** (pas une clé Steam Web API) et clique sur **Tester la connexion SteamGridDB**. La clé se masque par défaut.
+2. Ouvre la fiche du jeu, puis **Modifier → Atelier SteamGridDB**.
+3. Saisis ou corrige le titre, clique sur **Rechercher** et choisis le bon jeu dans la liste (les titres, éditions et variantes peuvent différer).
+4. Explore les illustrations par **Portrait / Paysage / Carré** ; utilise **Suivant** ou **Précédent** pour les autres images.
+5. Clique sur **Utiliser** sous l'image souhaitée. La version d'origine est téléchargée et vérifiée, puis copiée dans le stockage local GameDraw. Le changement doit apparaître dans la fiche et dans la bibliothèque, y compris au prochain lancement.
+
+**Sans clé API :** l'atelier reste utilisable. Clique sur **Parcourir SteamGridDB dans GameDraw** : la page publique s'ouvre dans une **fenêtre WebView2 gérée par GameDraw**, sans quitter le logiciel. Cherche ton jeu et repère la jaquette souhaitée sur le site. Sur l'image, utilise **Copier l'adresse de l'image** (puis colle son URL HTTPS directe dans l'atelier et clique sur **Appliquer**) ou **Enregistrer l'image** (puis **Choisir une image locale**). Le bouton **Navigateur externe** reste disponible si le site bloque sa consultation dans WebView2. L'image sélectionnée est enregistrée localement et retrouvée dans ta Bibliothèque après fermeture de l'atelier. Une URL de **page HTML** ne peut pas être importée comme image. La navigation publique est possible sans clé ; **l'accès automatisé aux résultats de l'API SteamGridDB exige une clé**. Il n'y a ni scraping du site ni accès dissimulé à l'API.
+
+**Erreurs expliquées :** `401` = clé manquante/refusée ; `403` = accès interdit ; `429` = limite de requêtes ; timeout = connexion interrompue. Tu peux toujours revenir à l'import manuel. Aucune nouvelle clé ni résultat ne sont écrits dans les journaux ; les clés restent gérées par les paramètres existants.
+
+**Bon à savoir :** une bannière paysage ou un carré peuvent être appliqués à une jaquette, mais le cadrage de la Bibliothèque reste principalement vertical : privilégie les formats Portrait pour un rendu homogène.
+
 ### 🖼️ Une jaquette refuse de s'afficher ?
 
 Dans **Bibliothèque → sélectionne le jeu → Modifier (crayon)**, tu peux désormais :
@@ -435,3 +481,62 @@ Dans **Bibliothèque → sélectionne le jeu → Modifier (crayon)**, tu peux d�
 
 GameDraw enregistre la jaquette **sur ton PC** : tu n'as pas à retrouver le fichier à chaque lancement.
 Si un service renvoie un code 401 ou une page à la place d'une image, l'application l'explique au lieu d'afficher une mystérieuse icône cassée. Et si le fichier local n'existe plus, elle montre une vignette de remplacement.
+
+
+### Fenêtre GameDraw intégrée (Windows)
+
+Depuis la **1.0.4 (HF1)**, GameDraw utilise un en-tête unifié à la place du bandeau Windows séparé : logo, onglets, thème et contrôles de fenêtre partagent le même style. Tu peux déplacer la fenêtre en attrapant son logo ou la zone libre de l'en-tête. Les boutons **—**, **□** et **×** permettent de réduire, agrandir/restaurer et fermer. Une session chronométrée active conserve sa confirmation avant fermeture.
+
+Les raccourcis Windows (dont `Alt+F4`) restent disponibles. Le comportement du redimensionnement et de l'accrochage aux bords doit être confirmé sur Windows après compilation.
+
+
+### Dépannage DEV-HUB — Auto-test code 76 (HF2)
+
+Si l'Auto-test s'arrête immédiatement sur un « manifeste invalide », le correctif HF2
+rétablit le manifeste Windows et introduit un contrôle explicite, compatible LF/CRLF :
+
+```powershell
+node .\tools\devhub-manifest-check.mjs
+.\DEV-AUTO.bat --devhub-selftest
+```
+
+Les erreurs `[MANIFEST][ERREUR]` indiquent le champ en cause. Les jeux et les
+jaquettes existants ne doivent pas être supprimés. Voir `docs/WikiJS/09-Diagnostic-Depannage.md`.
+
+
+## GameDraw 1.0.5 HF3 — Finitions Windows et bibliothèque
+
+### Icônes Windows haute définition
+L’icône blanche reste celle de l’exécutable, de l’installateur et des nouveaux raccourcis. La variante noire est fournie pour un raccourci personnalisé. Chaque ICO intègre **11 rendus PNG transparents**, de 16 à 256 px. Pour les **petites tailles (16/20/24/32 px)**, GameDraw utilise désormais un pictogramme de manette simplifié, plutôt qu’une réduction floue du logo détaillé. Les grandes tailles reprennent l’illustration HD avec ses cartes.
+
+Windows décide de la taille physique des icônes de la barre des tâches : une application ne peut pas forcer une icône plus grande. Pour vérifier la nouvelle icône sur un raccourci déjà épinglé, ferme GameDraw, désépingle-le et épingle le nouvel exécutable. Sur le Bureau, tu peux utiliser **clic droit → Propriétés → Changer d’icône** puis sélectionner `GameDraw-Light.ico` ou `GameDraw-Dark.ico` depuis les livrables.
+
+### Clic droit de la Bibliothèque
+Sur une carte de jeu, clic droit : **Ouvrir/Modifier**, **Dupliquer**, **changer le statut**, **favoris**, **envie de faire**, **100 %**, **inclure/exclure du cycle de tirage**, **ajouter des tags** et **supprimer** après confirmation. Un menu long reste dans l’écran et peut défiler. Les flèches du clavier et Échap fonctionnent également.
+
+Pour plusieurs jeux : clique sur **Sélectionner**, coche les jeux, puis fais clic droit sur **un jeu déjà sélectionné** pour appliquer le statut ou les marqueurs à tous. Le menu ne modifie pas les autres jeux. Les tags sont ajoutés sans effacer les anciens et les doublons sont ignorés. La barre de sélection propose aussi des actions rapides.
+
+### Suppression totale : sécurité et redémarrage
+Dans **Options → Données → Supprimer toutes les données**, GameDraw ouvre une vraie confirmation avec un message humoristique. Il faut taper `SUPPRIMER` avant de valider. Après succès, l’application affiche un message de fin et le bouton **Fermer GameDraw maintenant**. **Il faut fermer complètement et rouvrir GameDraw** après cette opération : éviter de modifier la configuration tant que l’ancienne session est ouverte. Une sauvegarde avant suppression reste fortement recommandée.
+
+### Interface améliorée
+Les Options et la page Mises à jour ont un style harmonisé : boutons, cases et champs colorés selon le thème GameDraw, espacement et retours visuels cohérents. Les animations sont réduites si Windows demande une réduction des mouvements.
+
+
+## Listes de jeux embarquées — GameDraw 1.0.6 HF1
+
+L’application Windows embarque directement les listes CSV de découverte du projet, même en version portable, NSIS ou MSI. Dans **Bibliothèque → Importer → Listes fournies (complètes)**, choisis **PC (60)**, **Switch 1 (60)**, **Switch 2 (40)**, **Switch 1+2 (100)** ou **PC + Switch (160)** pour ajouter les deux plateformes en une opération. Tu disposes d’un aperçu et d’une confirmation. Les doublons sont ignorés, les jaquettes et fiches existantes sont préservées et les tags Switch 1/Switch 2 sont conservés. Ces listes sont des sélections de départ, **pas la liste exhaustive de tous les jeux sortis**. Tu peux toujours importer tes propres TXT/CSV.
+
+### Netteté de l’icône de la barre des tâches
+
+GameDraw conserve son ICO RGBA Windows à 11 tailles pour l’EXE et les raccourcis, et applique maintenant une **image de fenêtre 256 px** au démarrage plutôt qu’une image 64 px. Le contenu optique a été recentré/agrandi dans les grandes tailles, tout en conservant les pictogrammes dessinés pour les petites tailles. **Windows contrôle la hauteur et la taille réelle** de la barre des tâches : GameDraw ne modifie pas ses paramètres. Si seule l’icône GameDraw paraît petite après une mise à jour, désépingle l’ancien raccourci puis épingle le nouvel exécutable.
+
+
+
+### SteamGridDB public : une jaquette sans clé API (1.0.6 HF3)
+
+Dans la fiche d'un jeu, ouvrez **Atelier SteamGridDB → Parcourir SteamGridDB dans GameDraw**. Dans la fenêtre du site public, trouvez une jaquette, faites **clic droit sur l'image → Copier l'adresse de l'image** (menu natif du navigateur), puis revenez dans l'atelier et cliquez sur **Importer l'image copiée**. Si WebView2 refuse la lecture du presse-papiers, utilisez **Ctrl+V** dans le champ URL puis **Appliquer**, ou enregistrez l'image et choisissez son fichier. La sélection via l'API avec plusieurs vignettes continue de nécessiter une clé API. L'application n'injecte aucune commande privilégiée dans le site public.
+
+**Fenêtre d'édition :** la fiche est désormais un dialogue natif adapté à la fenêtre Windows ; sa barre d'actions et sa croix restent visibles même en cas de défilement ou de DPI 125/150 %. Échap ferme la fiche.
+
+**Mises à jour au lancement :** la question Oui/Non s'affiche après la langue lors d'une première installation. Pour une configuration conservée d'une version antérieure sans réponse enregistrée, elle est posée une seule fois lors du premier lancement de HF3. Votre choix est conservé.
