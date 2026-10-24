@@ -20,8 +20,7 @@
     type LigneImport,
   } from "./library";
   import { trouverStatut } from "./statuts";
-  import { CATALOGUES, CATALOGUE_LABELS, type CatalogueName } from "./catalogues";
-  import { api } from "./api";
+    import { api } from "./api";
   import SteamImportDialog from "./SteamImportDialog.svelte";
   import ImportListeDialog from "./ImportListeDialog.svelte";
   import CatalogueInclusDialog from "./CatalogueInclusDialog.svelte";
@@ -59,7 +58,6 @@
 
   let recherche = $state("");
   let nouveauNom = $state("");
-  let catalogueOuvert = $state(false);
   let filtreStatut = $state<StatutJeu | "Tous">("Tous");
   let steamOuvert = $state(false);
   let rawgAjoutOuvert = $state(false);
@@ -67,6 +65,11 @@
   let importListeOuvert = $state(false);
   let catalogueInclusOuvert = $state(false);
   let importerOuvert = $state(false);
+  function fermerMenuImportSurExterieur(e: PointerEvent) {
+    if (importerOuvert && !(e.target as Element | null)?.closest?.(".catalogue-wrap--import")) {
+      importerOuvert = false;
+    }
+  }
   let messageImport = $state<string | null>(null);
   let messageImportTimeout: ReturnType<typeof setTimeout> | null = null;
   let modeSelection = $state(false);
@@ -94,16 +97,19 @@
     nouveauNom = "";
   }
 
-  async function ajouterJeuAvecJaquette(nom: string, coverUrl: string | null) {
+  async function ajouterJeuAvecJaquette(nom: string, coverUrl: string | null, steamAppId?: number) {
     if (!library || !platformId) return;
     const bibliothequeAvecJeu = ajouterJeu(library, nom);
     onLibraryChange(bibliothequeAvecJeu);
-    if (!coverUrl) return;
+    if (!coverUrl && !steamAppId) return;
     // Le nouveau jeu est toujours en dernière position (ajouterJeu() l'ajoute
     // à la fin) — pas besoin d'une fonction dédiée qui retourne son id.
     const nouveauJeu = bibliothequeAvecJeu.jeux[bibliothequeAvecJeu.jeux.length - 1];
     try {
-      const chemin = await api.downloadCover(platformId, nouveauJeu.id, coverUrl);
+      // Steam : privilégier la vraie jaquette native (pas tiny_image de storesearch).
+      const chemin = steamAppId
+        ? await api.downloadSteamCover(platformId, nouveauJeu.id, steamAppId)
+        : await api.downloadCover(platformId, nouveauJeu.id, coverUrl!);
       onLibraryChange({
         ...bibliothequeAvecJeu,
         jeux: bibliothequeAvecJeu.jeux.map((j) => (j.id === nouveauJeu.id ? { ...j, cover: chemin } : j)),
@@ -249,11 +255,6 @@
     afficherMessageImport(config.langue === "en" ? `${n} game${n > 1 ? "s" : ""} deleted.` : `${n} jeu${n > 1 ? "x" : ""} supprimé${n > 1 ? "s" : ""}.`);
   }
 
-  function importerCatalogue(nom: CatalogueName) {
-    if (!library) return;
-    onLibraryChange(ajouterPlusieursJeux(library, CATALOGUES[nom]).library);
-    catalogueOuvert = false;
-  }
 
   function importerDepuisSteam(noms: string[]) {
     if (!library) return;
@@ -302,6 +303,8 @@
   }
 </script>
 
+<svelte:window onpointerdown={fermerMenuImportSurExterieur} onkeydown={(e) => { if (e.key === "Escape") importerOuvert = false; }} />
+
 <section class="bibliotheque">
   <div class="chips-plateforme">
     {#each platforms as p}
@@ -331,32 +334,22 @@
         {tr(config.langue, "Depuis Steam", "From Steam")}
       </button>
     </div>
-    <div class="catalogue-wrap catalogue-wrap--catalogue">
-      <button class="btn-catalogue" onclick={() => { importerOuvert = false; catalogueOuvert = !catalogueOuvert; }}>
-        <LibraryBig size={16} strokeWidth={2.2} />
-        {tr(config.langue, "Catalogue", "Catalog")}
-      </button>
-      {#if catalogueOuvert}
-        <div class="menu-catalogue">
-          {#each Object.keys(CATALOGUES) as nom}
-            <button onclick={() => importerCatalogue(nom as CatalogueName)}>
-              {CATALOGUE_LABELS[nom as CatalogueName]}
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <!-- 1.0.7 : accès unique, jamais d'ajout silencieux via le catalogue. -->
     <div class="catalogue-wrap catalogue-wrap--import">
-      <button class="btn-catalogue" onclick={() => { catalogueOuvert = false; importerOuvert = !importerOuvert; }}>
+      <button class="btn-catalogue btn-importer-unifie" aria-expanded={importerOuvert} aria-haspopup="true" onclick={() => (importerOuvert = !importerOuvert)}>
         <Upload size={16} strokeWidth={2.2} />
-        {tr(config.langue, "Importer", "Import")}
+        {tr(config.langue, "Importer des jeux", "Import games")}
       </button>
       {#if importerOuvert}
-        <div class="menu-catalogue">
-          <button onclick={() => { steamOuvert = true; importerOuvert = false; }}>{tr(config.langue, "Depuis Steam", "From Steam")}</button>
-          <button onclick={() => { importListeOuvert = true; importerOuvert = false; }}>Liste / CSV</button>
-          <button onclick={() => { catalogueInclusOuvert = true; importerOuvert = false; }}>{tr(config.langue, "Listes fournies (complètes)", "Included game lists (full)")}</button>
-          <button onclick={() => { importerZip(); importerOuvert = false; }}>Archive .zip</button>
+        <div class="menu-catalogue menu-import-unifie" role="group" aria-label={tr(config.langue, "Sources d'import", "Import sources")}>
+          <button class="menu-import-important" onclick={() => { catalogueInclusOuvert = true; importerOuvert = false; }}>
+            <LibraryBig size={16}/>
+            <span><strong>{tr(config.langue, "Listes fournies", "Included game lists")}</strong><small>PC · Switch 1 · Switch 2</small></span>
+          </button>
+          <button onclick={() => { importListeOuvert = true; importerOuvert = false; }}><Upload size={15}/>{tr(config.langue, "Fichier TXT / CSV", "TXT / CSV file")}</button>
+          <button onclick={() => { steamOuvert = true; importerOuvert = false; }}><Gamepad2 size={15}/>{tr(config.langue, "Bibliothèque Steam", "Steam library")}</button>
+          <button onclick={() => { void importerZip(); importerOuvert = false; }}><Download size={15}/>{tr(config.langue, "Archive GameDraw (.zip)", "GameDraw archive (.zip)")}</button>
+          <p class="menu-import-note">{tr(config.langue, "Aucun ajout sans confirmation · doublons ignorés.", "Confirm before adding · duplicates skipped.")}</p>
         </div>
       {/if}
     </div>
@@ -423,7 +416,7 @@
       <Gamepad2 size={32} strokeWidth={1.8} color="var(--muted)" />
       <p class="titre-vide">{tr(config.langue, "Bibliothèque vide", "Empty library")}</p>
       <p class="sous-titre-vide">
-        {tr(config.langue, "Ajoute un jeu manuellement ci-dessus, ou importe un catalogue prédéfini pour démarrer rapidement.", "Add a game manually above, or import a predefined catalog to get started quickly.")}
+        {tr(config.langue, "Ajoute un jeu ci-dessus ou passe par Importer des jeux → Listes fournies pour choisir une liste avant de confirmer.", "Add a game above or use Import games → Included game lists to choose a list and confirm.")}
       </p>
       <button class="btn-catalogue" onclick={() => (catalogueInclusOuvert = true)}>
         <LibraryBig size={16} />
@@ -685,14 +678,7 @@
   .catalogue-wrap {
     position: relative;
   }
-  /* Les deux menus n'ont pas le même contexte horizontal :
-     - Catalogue est proche du bord droit, on l'aligne donc sur la droite ;
-     - Importer est sur la ligne suivante et son menu est plus large que le
-       bouton. L'aligner sur la droite faisait partir le menu vers x=0. */
-  .catalogue-wrap--catalogue .menu-catalogue {
-    right: 0;
-    left: auto;
-  }
+  /* Le menu d’import unique reste ancré sous son bouton, sans chevaucher les cartes. */
   .catalogue-wrap--import .menu-catalogue {
     left: 0;
     right: auto;
@@ -716,6 +702,13 @@
     border-radius: var(--radius);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
   }
+  .menu-import-unifie { min-width:min(285px, calc(100vw - 30px)); padding:9px; gap:5px; }
+  .menu-import-unifie button { display:flex; align-items:center; gap:10px; min-height:40px; }
+  .menu-import-unifie button svg { flex-shrink:0; }
+  .menu-import-unifie .menu-import-important { background:color-mix(in srgb,var(--accent) 13%,var(--card)); border:1px solid color-mix(in srgb,var(--accent) 26%,var(--border)); padding:11px; }
+  .menu-import-unifie .menu-import-important span { display:grid; gap:3px; }
+  .menu-import-unifie .menu-import-important small { font-size:.71rem; color:var(--muted); }
+  .menu-import-note { font-size:.69rem; line-height:1.35; color:var(--muted); margin:3px 7px 2px; }
   .menu-catalogue button {
     background: transparent;
     border: none;
@@ -799,13 +792,11 @@
   .cover-mini :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: top center;
+    object-fit: contain;
+    object-position: center center;
     transition: transform 0.35s ease;
   }
-  .carte-jeu:hover .cover-mini :global(.gamedraw-cover-image) {
-    transform: scale(1.06);
-  }
+
 
   .badges-coeur {
     position: absolute;

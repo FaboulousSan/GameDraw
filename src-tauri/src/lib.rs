@@ -1,5 +1,8 @@
+mod backup_restore;
 mod data;
 mod cover_utils;
+mod library_archive;
+mod steam_assets;
 mod github_updates;
 
 use data::{AppConfig, Badges, DrawSession, GameLibrary, Historique, Platform};
@@ -466,12 +469,84 @@ async fn download_cover(app: AppHandle, platform_id: String, game_id: String, ur
         if resp.content_length().is_some_and(|size| size > cover_utils::MAX_COVER_BYTES as u64) {
             return Err("Jaquette trop volumineuse (limite 15 Mio).".into());
         }
-        let bytes = resp.bytes().await.map_err(|e| format!("Lecture de l'image: {e}"))?;
+        // Content-Length peut être absent ou mensonger : plafonner pendant le transfert.
+        let mut stream = resp;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.chunk().await.map_err(|e| format!("Lecture de l'image: {e}"))? {
+            if chunk.len() > cover_utils::MAX_COVER_BYTES.saturating_sub(bytes.len()) {
+                return Err("Jaquette trop volumineuse pendant le transfert (limite 15 Mio).".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         let dir = data_dir(&app)?;
         let images = data::images_dir(&dir, &platform_id);
         cover_utils::store_image(&images, &game_id, &bytes)
     }.await;
     logged(&app, "download_cover", result)
+}
+
+/// Métadonnées d'assets Steam : les nouveaux jeux peuvent utiliser un chemin
+/// de contenu haché que l'ancienne URL fixe ne connaît pas. L'API est publique,
+/// sans compte ni clé ; si elle échoue, on retente les anciennes URL de jaquette.
+async fn steam_asset_urls(app_id: i64) -> Vec<String> {
+    let input = serde_json::json!({
+        "ids": [{"appid": app_id}],
+        "context": {"language": "english", "country_code": "FR", "steam_realm": 1},
+        "data_request": {"include_assets": true}
+    });
+    let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(9)).build() {
+        Ok(client) => client,
+        Err(_) => return Vec::new(),
+    };
+    let response = match client
+        .get("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/")
+        .query(&[("input_json", input.to_string())]).send().await
+    {
+        Ok(response) if response.status().is_success() => response,
+        _ => return Vec::new(),
+    };
+    // Les métadonnées ont une taille très limitée, même sans Content-Length.
+    const MAX_METADATA_BYTES: usize = 512 * 1024;
+    if response.content_length().is_some_and(|len| len > MAX_METADATA_BYTES as u64) { return Vec::new(); }
+    let mut stream = response;
+    let mut bytes = Vec::new();
+    loop {
+        match stream.chunk().await {
+            Ok(Some(chunk)) if chunk.len() <= MAX_METADATA_BYTES.saturating_sub(bytes.len()) => bytes.extend_from_slice(&chunk),
+            Ok(None) => break,
+            _ => return Vec::new(),
+        }
+    }
+    match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(payload) => steam_assets::portrait_urls(app_id, &payload),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Sans clé SteamGridDB : en premier, la jaquette Steam HD issue du vrai chemin
+/// officiel (incluant les chemins hachés), puis les anciennes URL. Le header
+/// horizontal ne remplace le portrait que si aucune jaquette portrait n'existe.
+#[tauri::command]
+async fn download_steam_cover(app: AppHandle, platform_id: String, game_id: String, steam_app_id: i64) -> Result<String, String> {
+    cover_utils::safe_id(&platform_id)?;
+    cover_utils::safe_id(&game_id)?;
+    if steam_app_id <= 0 { return Err("Identifiant Steam invalide.".into()); }
+    let mut urls = steam_asset_urls(steam_app_id).await;
+    urls.extend(steam_assets::legacy_portrait_urls(steam_app_id));
+    // Secours en dernier ressort : format horizontal, affichage complet avec contain.
+    urls.push(format!("https://shared.steamstatic.com/store_item_assets/steam/apps/{steam_app_id}/header.jpg"));
+    let mut deja_vus = std::collections::HashSet::new();
+    for url in urls {
+        if !deja_vus.insert(url.clone()) { continue; }
+        match download_cover(app.clone(), platform_id.clone(), game_id.clone(), url).await {
+            Ok(path) => return Ok(path),
+            Err(message) if message.contains("Téléchargement de jaquette impossible") => {
+                return Err(format!("Réseau Steam indisponible : {message}"));
+            }
+            Err(_) => continue, // 404, absence de fichier, format invalide : suivant.
+        }
+    }
+    Err("Aucune jaquette Steam publique disponible pour ce jeu. Utilise SteamGridDB (site public) ou une image locale.".into())
 }
 
 /// Import local : même validation de format, mêmes chemins et même politique de cache.
@@ -488,6 +563,30 @@ fn save_local_cover(app: AppHandle, platform_id: String, game_id: String, source
         cover_utils::store_image(&data::images_dir(&dir, &platform_id), &game_id, &bytes)
     })();
     logged(&app, "save_local_cover", result)
+}
+
+/// Import de l'image réellement copiée par l'utilisateur (SteamGridDB public ou autre site).
+/// Le presse-papiers est lu UNIQUEMENT par le frontend suite à un clic explicite ;
+/// cette commande reçoit des octets PNG/JPEG/WEBP/GIF et applique la même validation locale.
+#[tauri::command]
+fn save_clipboard_cover(app: AppHandle, platform_id: String, game_id: String, image_base64: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let result: Result<String, String> = (|| {
+        cover_utils::safe_id(&platform_id)?;
+        cover_utils::safe_id(&game_id)?;
+        let max_encoded = cover_utils::MAX_COVER_BYTES.div_ceil(3) * 4 + 4;
+        if image_base64.len() > max_encoded {
+            return Err("Image du presse-papiers trop volumineuse (15 Mio maximum).".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(image_base64)
+            .map_err(|_| "Image du presse-papiers illisible.".to_owned())?;
+        if bytes.len() > cover_utils::MAX_COVER_BYTES {
+            return Err("Image du presse-papiers trop volumineuse.".into());
+        }
+        let dir = data_dir(&app)?;
+        cover_utils::store_image(&data::images_dir(&dir, &platform_id), &game_id, &bytes)
+    })();
+    logged(&app, "save_clipboard_cover", result)
 }
 
 /// Secours ciblé lorsque l'asset protocol WebView2 n'affiche pas un ancien chemin.
@@ -639,50 +738,12 @@ fn export_library_zip(app: AppHandle, platform_id: String, dest_path: String) ->
 /// Retourne les jeux importés — c'est le frontend qui les fusionne avec la
 /// bibliothèque cible (dédoublonnage par nom déjà en place, cf. library.ts).
 #[tauri::command]
-fn import_library_zip(app: AppHandle, platform_id: String, source_path: String) -> Result<GameLibrary, String> {
-    let result: Result<GameLibrary, String> = (|| {
-        use std::io::Read;
-        let dir = data_dir(&app)?;
-        let file = std::fs::File::open(&source_path).map_err(|e| format!("ouverture {source_path}: {e}"))?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("lecture de l'archive : {e}"))?;
-
-        let mut games_json = String::new();
-        {
-            let mut entry = archive
-                .by_name("games.json")
-                .map_err(|_| "games.json introuvable dans l'archive (pas une export GameDraw ?)".to_string())?;
-            entry.read_to_string(&mut games_json).map_err(|e| e.to_string())?;
-        }
-        let mut imported: GameLibrary =
-            serde_json::from_str(&games_json).map_err(|e| format!("games.json invalide : {e}"))?;
-
-        let images_dir = data::images_dir(&dir, &platform_id);
-        std::fs::create_dir_all(&images_dir).map_err(|e| format!("mkdir {images_dir:?}: {e}"))?;
-
-        let base_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-
-        for (i, jeu) in imported.jeux.iter_mut().enumerate() {
-            let nouvel_id = format!("{base_id:x}-{i}");
-            if let Some(cover_rel) = jeu.cover.clone() {
-                if let Ok(mut entry) = archive.by_name(&cover_rel) {
-                    let ext = std::path::Path::new(&cover_rel).extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-                    let dest = images_dir.join(format!("{nouvel_id}.{ext}"));
-                    let mut bytes = Vec::new();
-                    entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-                    std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
-                    jeu.cover = Some(dest.to_string_lossy().to_string());
-                } else {
-                    jeu.cover = None;
-                }
-            }
-            jeu.id = nouvel_id;
-        }
-        imported.platform_id = platform_id;
-        Ok(imported)
-    })();
+async fn import_library_zip(app: AppHandle, platform_id: String, source_path: String) -> Result<GameLibrary, String> {
+    let dir = data_dir(&app)?;
+    // Préparation, validation et copie de jaquettes sur thread bloquant dédié.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        library_archive::import_library(&dir, &platform_id, std::path::Path::new(&source_path))
+    }).await.map_err(|e| format!("Import ZIP interrompu : {e}"))?;
     logged(&app, "import_library_zip", result)
 }
 
@@ -771,72 +832,27 @@ fn export_backup(app: AppHandle, dest_path: String, password: Option<String>) ->
     logged(&app, "export_backup", result)
 }
 
-/// Restaure une sauvegarde complète : écrase les fichiers existants du
-/// dossier de données avec le contenu de l'archive. Destructif — c'est au
-/// frontend de confirmer avec l'utilisateur avant d'appeler cette commande
-/// (même dialogue maison que le reste de l'app). Un redémarrage de l'app
-/// est nécessaire après restauration pour que tout l'état en mémoire
-/// (config, bibliothèque active, session, historique) reflète les
-/// fichiers restaurés.
-///
-/// `password` : à fournir si (et seulement si) l'archive a été exportée
-/// avec un mot de passe. ⚠️ Si l'archive est chiffrée mais qu'aucun mot de
-/// passe n'est fourni ici, les fichiers seront écrits sous leur forme
-/// chiffrée brute (corrompus) plutôt que de lever une erreur claire — la
-/// détection fiable de ce cas précis n'a pas pu être vérifiée sans pouvoir
-/// compiler. Recommandation à Sensei : toujours fournir le mot de passe
-/// utilisé à l'export, et vérifier après restauration que l'app se relance
-/// normalement (sinon, refaire la restauration avec le bon mot de passe).
+/// Validation intégrale dans un dossier temporaire avant bascule sur disque.
+/// Les anciennes données sont conservées à côté du répertoire actif afin de
+/// permettre une récupération même après réussite. Redémarrer après succès.
 #[tauri::command]
-fn import_backup(app: AppHandle, source_path: String, password: Option<String>) -> Result<(), String> {
-    let result: Result<(), String> = (|| {
-        use std::io::Read;
-        let dir = data_dir(&app)?;
-        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
-
-        let file = std::fs::File::open(&source_path).map_err(|e| format!("ouverture {source_path}: {e}"))?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("lecture de l'archive : {e}"))?;
-        let mot_de_passe = password.filter(|p| !p.trim().is_empty());
-
-        for i in 0..archive.len() {
-            // Vérifie d'abord (sans déchiffrer) si c'est un dossier — un
-            // dossier n'est jamais chiffré à l'export, inutile et risqué
-            // d'appeler by_index_decrypt dessus.
-            let est_un_dossier = archive.by_index(i).map_err(|e| e.to_string())?.is_dir();
-
-            if est_un_dossier {
-                let entry = archive.by_index(i).map_err(|e| e.to_string())?;
-                let Some(rel) = entry.enclosed_name() else { continue };
-                std::fs::create_dir_all(dir.join(rel)).map_err(|e| e.to_string())?;
-                continue;
-            }
-
-            let mut entry = match &mot_de_passe {
-                // by_index_decrypt() retourne un seul niveau de Result dans
-                // cette version du crate zip (pas Result<Result<...>>
-                // comme supposé initialement sans pouvoir compiler pour
-                // vérifier) — une erreur ici couvre aussi bien un mauvais
-                // mot de passe qu'un problème de lecture.
-                Some(pw) => archive
-                    .by_index_decrypt(i, pw.as_bytes())
-                    .map_err(|e| format!("Mot de passe incorrect ou archive invalide : {e}"))?,
-                None => archive.by_index(i).map_err(|e| e.to_string())?,
-            };
-            // enclosed_name() refuse les chemins qui tenteraient de sortir du
-            // dossier cible (protection "zip slip") — jamais de confiance
-            // aveugle dans les chemins fournis par une archive externe.
-            let Some(rel) = entry.enclosed_name() else { continue };
-            let outpath = dir.join(rel);
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
-            }
-            let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-            std::fs::write(&outpath, &bytes).map_err(|e| format!("écriture {outpath:?}: {e}"))?;
-        }
-        Ok(())
-    })();
+async fn import_backup(app: AppHandle, source_path: String, password: Option<String>) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    // Extraire plusieurs Gio ne doit pas bloquer le thread WebView2.
+    let result: Result<String, String> = tauri::async_runtime::spawn_blocking(move || {
+        let recovery = backup_restore::import_backup(&dir, std::path::Path::new(&source_path), password.as_deref())?;
+        Ok(recovery.map(|path| format!("Anciennes données conservées : {}", path.display()))
+            .unwrap_or_else(|| "Aucune donnée précédente à protéger".into()))
+    }).await.map_err(|e| format!("Tâche de restauration interrompue : {e}"))?;
     logged(&app, "import_backup", result)
+}
+
+/// Une fenêtre configurée pour le tray peut intercepter Window.close().
+/// Après une restauration validée, quitter vraiment le processus évite
+/// qu'une ancienne session réécrive les nouvelles données sur disque.
+#[tauri::command]
+fn quitter_apres_restauration(app: AppHandle) {
+    app.exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -847,6 +863,17 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Restaure le dossier précédent si une interruption a eu lieu
+            // entre les deux renames de l'import. Aucun écrasement de données.
+            if let Ok(dir) = app.handle().path().app_data_dir() {
+                if let Err(e) = backup_restore::recover_if_interrupted(&dir) {
+                    eprintln!("[GameDraw] Récupération après restauration interrompue : {e}");
+                    // Bloquer le démarrage : sinon l'application recréerait
+                    // une bibliothèque vierge au-dessus des données déplacées.
+                    return Err(Box::<dyn std::error::Error>::from(std::io::Error::new(
+                        std::io::ErrorKind::Other, e)));
+                }
+            }
             // Hook de panic Rust : capture les panics natives (pas seulement
             // les erreurs métier retournées en Result) dans error.log, avec
             // le chemin du dossier de données figé une fois au démarrage.
@@ -979,7 +1006,9 @@ pub fn run() {
             definir_icone_fenetre,
             rawg_search,
             download_cover,
+            download_steam_cover,
             save_local_cover,
+            save_clipboard_cover,
             read_cover_data_url,
             read_text_file,
             steam_owned_games,
@@ -988,6 +1017,7 @@ pub fn run() {
             effacer_toutes_donnees,
             export_backup,
             import_backup,
+            quitter_apres_restauration,
             steam_store_search,
             steamgriddb_search,
             steamgriddb_games,

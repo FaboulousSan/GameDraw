@@ -8,7 +8,7 @@
     onAjouter,
     onClose,
   }: {
-    onAjouter: (nom: string, coverUrl: string | null) => void;
+    onAjouter: (nom: string, coverUrl: string | null, steamAppId?: number) => void;
     onClose: () => void;
   } = $props();
 
@@ -32,7 +32,7 @@
   }
 
   function choisir(r: RawgGame) {
-    onAjouter(r.nom, r.coverUrl);
+    onAjouter(r.nom, r.coverUrl, r.id);
     onClose();
   }
 </script>
@@ -187,7 +187,7 @@
   .resultat :global(.gamedraw-cover-image) {
     width: 32px;
     height: 44px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 4px;
     flex-shrink: 0;
   }

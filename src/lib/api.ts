@@ -52,6 +52,9 @@ export const api = {
   readCoverDataUrl: (path: string) => invoke<string>("read_cover_data_url", { path }),
   saveLocalCover: (platformId: string, gameId: string, sourcePath: string) =>
     invoke<string>("save_local_cover", { platformId, gameId, sourcePath }),
+  /** Image copiée par l'utilisateur (sans automatisation ni scraping de site). */
+  saveClipboardCover: (platformId: string, gameId: string, imageBase64: string) =>
+    invoke<string>("save_clipboard_cover", { platformId, gameId, imageBase64 }),
 
   /** Import Steam — entièrement côté Rust, même principe que RAWG. */
   steamOwnedGames: (apiKey: string, steamId: string) =>
@@ -79,16 +82,18 @@ export const api = {
   effacerToutesDonnees: () => invoke<void>("effacer_toutes_donnees"),
 
   exportBackup: (destPath: string, password?: string) => invoke<void>("export_backup", { destPath, password: password || null }),
-  /** Restaure une sauvegarde complète — DESTRUCTIF (écrase les fichiers
-   * existants). Toujours confirmer avec l'utilisateur avant d'appeler ceci,
-   * et prévenir qu'un redémarrage de l'app est nécessaire après. Fournir le
-   * même mot de passe que celui utilisé à l'export, si applicable. */
-  importBackup: (sourcePath: string, password?: string) => invoke<void>("import_backup", { sourcePath, password: password || null }),
+  /** Restauration par staging ; les données précédentes restent en copie
+   * à côté du dossier actif. Un redémarrage est requis après réussite. */
+  importBackup: (sourcePath: string, password?: string) => invoke<string>("import_backup", { sourcePath, password: password || null }),
+  quitAfterRestore: () => invoke<void>("quitter_apres_restauration"),
 
   /** Recherche de jaquette SANS clé API (endpoint public Steam Store,
    * aucune inscription requise) — alternative à rawgSearch pour qui ne
    * veut pas créer de compte. Ne couvre que les jeux présents sur Steam. */
   steamStoreSearch: (query: string) => invoke<RawgGame[]>("steam_store_search", { query }),
+  /** Jaquette Steam officielle sans clé, meilleure variante disponible ; erreur explicite si absente. */
+  downloadSteamCover: (platformId: string, gameId: string, steamAppId: number) =>
+    invoke<string>("download_steam_cover", { platformId, gameId, steamAppId }),
 
   /** Recherche de jaquette via SteamGridDB (clé requise) — en complément du
    * lien "fenêtre intégrée" (sans clé) proposé dans la Fiche du jeu. */

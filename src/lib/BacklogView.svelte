@@ -264,13 +264,11 @@
   .cover-backlog :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: top center;
+    object-fit: contain;
+    object-position: center center;
     transition: transform 0.35s ease;
   }
-  .carte-backlog:hover .cover-backlog :global(.gamedraw-cover-image) {
-    transform: scale(1.06);
-  }
+
 
   .badge-statut {
     position: absolute;

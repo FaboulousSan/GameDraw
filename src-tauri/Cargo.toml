@@ -1,6 +1,6 @@
 [package]
 name = "gamedraw"
-version = "1.0.6"
+version = "1.0.7"
 description = "GameDraw - tirage aleatoire de jeux video, local-first"
 authors = ["Faboulous San"]
 edition = "2021"

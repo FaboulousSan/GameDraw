@@ -199,7 +199,7 @@
   .resultat :global(.gamedraw-cover-image) {
     width: 32px;
     height: 44px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 4px;
     flex-shrink: 0;
   }

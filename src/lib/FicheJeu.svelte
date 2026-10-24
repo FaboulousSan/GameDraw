@@ -201,11 +201,13 @@
   }
 
   async function utiliserResultat(resultat: RawgGame) {
-    if (!resultat.coverUrl) return;
+    if (!resultat.coverUrl && sourceCover !== "steam") return;
     telechargementEnCours = true;
     erreurRawg = null;
     try {
-      const chemin = await api.downloadCover(platformId, game.id, resultat.coverUrl);
+      const chemin = sourceCover === "steam"
+        ? await api.downloadSteamCover(platformId, game.id, resultat.id)
+        : await api.downloadCover(platformId, game.id, resultat.coverUrl!);
       onSave({ cover: chemin });
       messageCover = tr(config.langue, "Jaquette téléchargée et enregistrée.", "Cover downloaded and saved.");
       resultatsRawg = null;
@@ -333,7 +335,7 @@
             {#if resultatsRawg}
               <div class="resultats-rawg">
                 {#each resultatsRawg as r (r.id)}
-                  <button class="resultat" onclick={() => utiliserResultat(r)} disabled={!r.coverUrl || telechargementEnCours}>
+                  <button class="resultat" onclick={() => utiliserResultat(r)} disabled={(!r.coverUrl && sourceCover !== "steam") || telechargementEnCours}>
                     {#if r.coverUrl}<CoverImage path={r.coverUrl} alt={r.nom} variant="preview" />{/if}
                     <span>{r.nom}</span>
                   </button>
@@ -632,22 +634,20 @@
   }
 
   .cover-cadre {
+    /* STAB-C4 : ratio naturel du bitmap, jamais un cadre impose 3:4.
+       La couverture conserve sa hauteur intrinseque a largeur disponible. */
     width: 100%;
-    aspect-ratio: 3 / 4;
+    height: auto;
+    aspect-ratio: auto;
     border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--input);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    transition: box-shadow 0.35s ease;
   }
-  .cover-cadre :global(.gamedraw-cover-image) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
-    transition: transform 0.35s ease;
-  }
-  .cover-cadre:hover :global(.gamedraw-cover-image) {
-    transform: scale(1.07);
+  .cover-cadre:hover {
+    /* Le relief porte sur le cadre, jamais sur les pixels de la jaquette. */
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--accent);
   }
 
   .coller-url {
@@ -769,7 +769,7 @@
   .resultat :global(.gamedraw-cover-image) {
     width: 32px;
     height: 32px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 4px;
     flex-shrink: 0;
   }

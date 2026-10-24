@@ -163,8 +163,8 @@
   .cover-mini :global(.gamedraw-cover-image) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: top center;
+    object-fit: contain;
+    object-position: center center;
   }
 
   .nom-resultat {

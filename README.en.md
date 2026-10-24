@@ -1,7 +1,9 @@
 <div align="center">
   <img src="assets/gamedraw-logo.svg" alt="GameDraw" width="150" />
 
-# 🎲 GameDraw 1.0.6
+# 🎲 GameDraw 1.0.7
+
+> **New in 1.0.7 — Library:** bundled lists now live under **Import games → Included game lists**, with preview and confirmation; no one-click catalog import. **SteamGridDB without a key:** open the public site from the studio, copy the image URL, preview the cover, and confirm importing it. With an API key, the native gallery remains available.
 
 **You've got games. Lots of games. GameDraw helps you decide what to play.**
 
@@ -17,15 +19,15 @@ Created by **Faboulous San**.
 > The familiar problem: “What should I play tonight?” Spend 40 minutes scrolling through your backlog, then launch the same game again. Or let GameDraw pick for you.
 
 
-**Version 1.0.6 — [CHANGELOG](CHANGELOG.en.md):** new cover right-click menu, fixed SteamGridDB website access, better import confirmation and hidden publisher settings.
+**Version 1.0.7 — [CHANGELOG](CHANGELOG.en.md):** new cover right-click menu, fixed SteamGridDB website access, better import confirmation and hidden publisher settings.
 
-## 🔄 GitHub updates — GameDraw 1.0.6
+## 🔄 GitHub updates — GameDraw 1.0.7
 
 **On first launch**, after selecting the application language, GameDraw asks whether it should **check GitHub for updates at startup**. Choose **Yes** or **No**: no checks happen before you make this decision, and downloads/installations always require confirmation. Your selection is saved and can be changed in **Settings → Updates**. Existing users retain their previously saved preference.
 
 GameDraw can now check public **GitHub Releases** from **Settings → Updates**. The official repository **[FaboulousSan/GameDraw](https://github.com/FaboulousSan/GameDraw/)** is preconfigured. Choose **Stable** or **Beta**, and select **Check for updates**. Review the release notes, select a published GameDraw `.exe`/`.msi` installer and explicitly approve its download into **Windows Downloads**. Run the downloaded installer **manually** after checking the publisher.
 
-For **new installations**, **Automatically check on startup** is enabled by default and may be disabled at any time. **Existing preferences are preserved** when upgrading. If enabled, GameDraw checks once on launch, then shows an **animated update notification** with `current version → new version`, a preview of release notes, **View update / Later** actions, and optional Windows notification if permission was previously granted. Motion reduction follows Windows accessibility preferences. Use **Preview animated update notification** in Settings → Updates to test the interface right away, even if GitHub has no newer release; this is explicitly labelled as a preview. The installer download has a **real progress bar** showing the transferred bytes.
+For **new installations**, **Automatically check on startup** is explicitly offered on first launch (Yes / No); it may be changed later. **Existing preferences are preserved** when upgrading. If enabled, GameDraw checks once on launch, then shows an **animated update notification** with `current version → new version`, a preview of release notes, **View update / Later** actions, and optional Windows notification if permission was previously granted. Motion reduction follows Windows accessibility preferences. Use **Preview animated update notification** in Settings → Updates to test the interface right away, even if GitHub has no newer release; this is explicitly labelled as a preview. The installer download has a **real progress bar** showing the transferred bytes.
 
 Disable the startup check to stop automatic GitHub requests; manual checks remain available. Neither downloads nor installations happen silently. No older release is offered as an update.
 
@@ -48,9 +50,11 @@ Start by importing a list, connecting to Steam, or adding games manually. You do
 
 ---
 
+> **Historical screenshot:** the import menu screenshot below predates v1.0.7. Use the single **Import games** button in the current release.
+
 # 📥 Import your games
 
-Go to **Library → Import** after selecting your target library (**PC** or **Switch**).
+Go to **Library → Import games** after selecting your target library (**PC** or **Switch**).
 
 <p align="center"><img src="docs/screenshots/gamedraw-import-menu.png" alt="Import menu showing Steam, TXT/CSV, and ZIP" width="880" /></p>
 
@@ -307,7 +311,7 @@ Under **Options → Data → Delete all data**, GameDraw shows a playful confirm
 The Updates screen now shares GameDraw's button, input, toggle and card design instead of using browser-default widgets. Animations respect the reduced-motion preference.
 
 
-## Bundled game lists — GameDraw 1.0.6 HF1
+## Bundled game lists — GameDraw 1.0.7 HF1
 
 The Windows app includes the game's starter CSV lists **inside the executable build**. Go to **Library → Import → Included game lists (full)**. Choose **PC (60)**, **Switch 1 (60)**, **Switch 2 (40)**, **Switch 1+2 (100)**, or **PC + Switch (160)** to import both platforms in one go. Review the preview and confirm. Duplicates are skipped, existing covers and game properties remain unchanged, and Switch 1/Switch 2 tags are preserved. The lists are starter selections, **not an exhaustive catalog of every published game**. You can still import your own TXT/CSV files.
 

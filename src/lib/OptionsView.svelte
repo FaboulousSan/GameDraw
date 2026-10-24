@@ -70,6 +70,7 @@
   let nouveauStatutCouleur = $state("#89B4FA");
   let sauvegardeEnCours = $state(false);
   let restaurationEnCours = $state(false);
+  let restaurationTerminee = $state(false);
   let messageDonnees = $state<string | null>(null);
   // Suppression totale : deux étapes (bouton puis saisie du mot) — une
   // action irréversible ne doit jamais être à un seul clic de distance.
@@ -114,6 +115,15 @@
       erreurFermeture = `${tr(config.langue, "Ferme l’application manuellement", "Close the app manually")}: ${String(e)}`;
     }
   }
+  async function fermerApresRestauration() {
+    erreurFermeture = "";
+    try {
+      await api.quitAfterRestore();
+    } catch (e) {
+      erreurFermeture = `${tr(config.langue, "Ferme GameDraw depuis son icône de la barre système", "Fully exit GameDraw from its tray icon")}: ${String(e)}`;
+    }
+  }
+
   let motDePasseExport = $state("");
   let motDePasseImport = $state("");
 
@@ -219,6 +229,7 @@
   }
 
   async function exporterSauvegarde() {
+    if (sauvegardeEnCours || restaurationEnCours) return;
     try {
       const dest = await save({
         defaultPath: "GameDraw-sauvegarde.zip",
@@ -238,16 +249,18 @@
   }
 
   async function restaurerSauvegarde() {
+    if (sauvegardeEnCours || restaurationEnCours) return;
     const source = await open({ multiple: false, filters: [{ name: "Archive GameDraw", extensions: ["zip"] }] });
     if (!source || Array.isArray(source)) return;
     const confirme = await confirmer(
-      tr(config.langue, "Restaurer cette sauvegarde va ÉCRASER toutes les données actuelles (bibliothèques, historique, réglages). Cette action est irréversible. Continuer ?", "Restoring this backup will OVERWRITE all current data (libraries, history, settings). This action cannot be undone. Continue?")
+      tr(config.langue, "Restaurer cette sauvegarde va REMPLACER les données actuelles après vérification complète du ZIP. Une copie de récupération sera conservée. Ferme puis relance GameDraw après succès. Continuer ?", "Restoring this backup will REPLACE current data after ZIP validation. A recovery copy will be kept. Close and reopen GameDraw after success. Continue?")
     );
     if (!confirme) return;
     try {
       restaurationEnCours = true;
-      await api.importBackup(source, motDePasseImport);
-      messageDonnees = tr(config.langue, "Sauvegarde restaurée — ferme et relance GameDraw pour que tout soit pris en compte.", "Backup restored — close and restart GameDraw to apply everything.");
+      const recoveryInfo = await api.importBackup(source, motDePasseImport);
+      messageDonnees = tr(config.langue, "Sauvegarde restaurée et vérifiée — ferme et relance GameDraw. ", "Backup restored and validated — close and restart GameDraw. ") + recoveryInfo;
+      restaurationTerminee = true;
     } catch (e) {
       messageDonnees = `${tr(config.langue, "Erreur de restauration", "Restore error")} : ${String(e)}`;
     } finally {
@@ -758,7 +771,7 @@
             {tr(config.langue, "Aucun mot de passe : l’archive ne sera pas chiffrée.", "No password: the archive will not be encrypted.")}
           {/if}
         </p>
-        <button class="btn-sauvegarde" onclick={exporterSauvegarde} disabled={sauvegardeEnCours}>
+        <button class="btn-sauvegarde" onclick={exporterSauvegarde} disabled={sauvegardeEnCours || restaurationEnCours}>
           {#if sauvegardeEnCours}<Loader2 size={15} strokeWidth={2.2} class="spin" />{:else}<Download size={15} strokeWidth={2.2} />{/if}
           {tr(config.langue, "Créer une sauvegarde", "Create backup")}
         </button>
@@ -767,11 +780,11 @@
       <div class="carte-reglage">
         <p class="eyebrow">{tr(config.langue, "Restauration", "Restore")}</p>
         <p class="aide aide-danger">
-          ⚠️ {tr(config.langue, "Écrase toutes les données actuelles avec le contenu de la sauvegarde choisie — action irréversible. Un redémarrage de l’app est nécessaire après restauration.", "Overwrites all current data with the selected backup — this cannot be undone. Restart the app after restoring.")}
+          ⚠️ {tr(config.langue, "Le ZIP est contrôlé et extrait à part avant remplacement. Les anciennes données sont conservées comme copie de récupération. Redémarre l’application après restauration.", "The ZIP is checked and extracted separately before replacement. Previous data is preserved for recovery. Restart the app after restoration.")}
         </p>
         <p class="eyebrow">{tr(config.langue, "Mot de passe (optionnel — seulement si l’archive en avait un)", "Password (optional — only if the archive had one)")}</p>
         <input type="password" placeholder={tr(config.langue, "Laisser vide si l’archive n’est pas chiffrée", "Leave empty if the archive is not encrypted")} bind:value={motDePasseImport} />
-        <button class="btn-restaurer" onclick={restaurerSauvegarde} disabled={restaurationEnCours}>
+        <button class="btn-restaurer" onclick={restaurerSauvegarde} disabled={restaurationEnCours || sauvegardeEnCours}>
           {#if restaurationEnCours}<Loader2 size={15} strokeWidth={2.2} class="spin" />{:else}<Upload size={15} strokeWidth={2.2} />{/if}
           {tr(config.langue, "Restaurer une sauvegarde", "Restore backup")}
         </button>
@@ -786,7 +799,7 @@
             "Deletes all GameDraw data: games, platforms, history, achievements, settings and downloaded covers. This cannot be undone — export a backup first if needed."
           )}
         </p>
-        <button class="btn-danger" onclick={() => { confirmationSuppression = true; saisieSuppression = ""; messageDonnees = null; }}>
+        <button class="btn-danger" disabled={restaurationEnCours || sauvegardeEnCours} onclick={() => { confirmationSuppression = true; saisieSuppression = ""; messageDonnees = null; }}>
           <Trash2 size={15} strokeWidth={2.2} />
           {tr(config.langue, "Supprimer toutes les données…", "Delete all data…")}
         </button>
@@ -809,8 +822,10 @@
       </div>
 
       <div class="carte-reglage" aria-label={tr(config.langue, "Journal des changements", "Changelog")}>
-        <p class="eyebrow">{tr(config.langue, "Nouveautés — GameDraw 1.0.6", "What's new — GameDraw 1.0.6")}</p>
+        <p class="eyebrow">{tr(config.langue, "Nouveautés — GameDraw 1.0.7", "What's new — GameDraw 1.0.7")}</p>
         <ul class="gd-release-notes">
+          <li>{tr(config.langue, "Catalogue et Importer réunis dans « Importer des jeux », avec aperçu et confirmation avant chaque ajout.", "Catalog and Import unified under ‘Import games’, with preview and confirmation before adding.")}</li>
+          <li>{tr(config.langue, "SteamGridDB sans clé : aperçu de l’image et confirmation avant téléchargement.", "SteamGridDB without a key: preview artwork before downloading and applying.")}</li>
           <li>{tr(config.langue, "Menu contextuel sur les jaquettes : modifier, image locale, SteamGridDB et retrait confirmé.", "Cover right-click menu: edit, local file, SteamGridDB and confirmed removal.")}</li>
           <li>{tr(config.langue, "Lancement du site SteamGridDB dans le navigateur par défaut (permissions Tauri corrigées).", "SteamGridDB website opens in the default browser (fixed Tauri permissions).")}</li>
           <li>{tr(config.langue, "Confirmation d’import claire et bouton pour fermer l’atelier après application.", "Explicit success message and button to close the cover studio.")}</li>
@@ -843,6 +858,19 @@
     {/if}
   </div>
 </section>
+
+{#if restaurationTerminee}
+  <div class="gd-delete-overlay" role="presentation">
+    <div class="gd-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="gd-restore-title" aria-describedby="gd-restore-message">
+      <div class="gd-delete-emblem gd-delete-success"><CheckCircle2 size={30} /></div>
+      <h2 id="gd-restore-title">{tr(config.langue, "Restauration vérifiée", "Restore validated")}</h2>
+      <p id="gd-restore-message">{messageDonnees}</p>
+      <div class="gd-delete-warning"><ShieldAlert size={17}/>{tr(config.langue, "Pour éviter tout écrasement depuis l'ancienne session, quitte complètement GameDraw avant de reprendre.", "To avoid writes from the previous session, fully exit GameDraw before continuing.")}</div>
+      {#if erreurFermeture}<p class="aide-danger" role="alert">{erreurFermeture}</p>{/if}
+      <button class="gd-delete-primary" onclick={fermerApresRestauration}><DoorOpen size={16} /> {tr(config.langue, "Fermer GameDraw maintenant", "Close GameDraw now")}</button>
+    </div>
+  </div>
+{/if}
 
 {#if confirmationSuppression || suppressionTerminee}
   <div class="gd-delete-overlay" role="presentation">

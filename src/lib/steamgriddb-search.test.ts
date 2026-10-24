@@ -39,4 +39,10 @@ describe("SteamGridDB HF5 — galerie et import manuel", () => {
     expect(isDirectImageUrl("https://user:password@cdn.example.org/a.png")).toBe(false);
     expect(isDirectImageUrl("pas une url")).toBe(false);
   });
+  it("ne confond pas vérification HTTPS et validation du contenu image", () => {
+    expect(isDirectImageUrl("https://www.steamgriddb.com/search/grids?term=Zelda")).toBe(true);
+    // Validation HTTPS syntaxique uniquement : le backend doit encore vérifier le contenu image.
+    expect(isDirectImageUrl("ftp://cdn.example.org/a.png")).toBe(false);
+    expect(isDirectImageUrl("https://evil.example@cdn.example.org/a.png")).toBe(false);
+  });
 });

@@ -1391,12 +1391,11 @@
   .cover-resultat:hover {
     transform: scale(1.04);
   }
+  /* Relief sur le CONTENEUR : la bordure ne doit pas rétrécir/masquer l'image. */
   .cover-resultat :global(.gamedraw-cover-image) {
-    max-height: 150px;
-    max-width: 110px;
-    object-fit: cover;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    object-fit: contain; /* contrat partagé : jamais de recadrage */
+  }
+  .cover-resultat :global(.gamedraw-cover-frame) {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 18px color-mix(in srgb, var(--accent) 25%, transparent);
   }
 

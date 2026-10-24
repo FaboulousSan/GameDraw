@@ -1,7 +1,9 @@
 <div align="center">
   <img src="assets/gamedraw-logo.svg" alt="GameDraw" width="150" />
 
-# 🎲 GameDraw 1.0.6
+# 🎲 GameDraw 1.0.7
+
+> **Nouveau 1.0.7 — Bibliothèque :** les listes fournies sont regroupées sous **Importer des jeux → Listes fournies**, avec aperçu et confirmation. Plus aucun ajout immédiat par « Catalogue ». **SteamGridDB sans clé :** ouvrez le site public depuis l’atelier, copiez l’adresse de l’image, prévisualisez la jaquette, puis confirmez son import. Avec clé, la galerie intégrée continue de fonctionner.
 
 **Tu as des jeux. Beaucoup de jeux. GameDraw t'aide à choisir lequel lancer.**
 
@@ -19,9 +21,9 @@ Créé par **Faboulous San**.
 > **La méthode GameDraw :** laisser le hasard faire le sale boulot.
 
 
-**Version 1.0.6 — [CHANGELOG](CHANGELOG.md) :** menu sur les jaquettes, navigation SteamGridDB, confirmation d’import et paramètres GitHub simplifiés.
+**Version 1.0.7 — [CHANGELOG](CHANGELOG.md) :** menu sur les jaquettes, navigation SteamGridDB, confirmation d’import et paramètres GitHub simplifiés.
 
-## 🔄 Mises à jour GitHub — GameDraw 1.0.6
+## 🔄 Mises à jour GitHub — GameDraw 1.0.7
 
 **Au premier lancement**, juste après le choix de la langue, GameDraw demande : **« Souhaites-tu vérifier automatiquement les mises à jour au démarrage ? »** Tu peux répondre **Oui** ou **Non**, sans télécharger ni installer quoi que ce soit. Avant cette réponse, GameDraw ne vérifie pas GitHub. Le choix est sauvegardé et peut être modifié dans **Options → Mises à jour**. Les utilisateurs ayant déjà une configuration conservent leur choix existant.
 
@@ -31,7 +33,7 @@ Tu peux maintenant rechercher les nouvelles versions **directement dans GameDraw
 2. Sélectionne **Stable** (releases finales) ou **Bêta** (inclut les préversions).
 3. Clique sur **Rechercher une mise à jour** pour consulter la version, les nouveautés et les installateurs Windows publiés.
 4. Sélectionne un `.exe`/`.msi` GameDraw et clique sur **Télécharger dans Windows**. Confirme : une **barre de progression réelle** indique le pourcentage et le volume téléchargé ; le fichier arrive dans **Téléchargements** sans écraser un téléchargement existant.
-5. Installe-le **manuellement** après contrôle de sa provenance. GameDraw ne lance jamais l'installateur à ta place en 1.0.6.
+5. Installe-le **manuellement** après contrôle de sa provenance. GameDraw ne lance pas encore l'installateur automatiquement en 1.0.7.
 
 ### Détection automatique désactivable
 
@@ -66,7 +68,7 @@ Bibliothèque vide ? Aucun souci. GameDraw te laisse importer tes jeux ou commen
 
 # 📥 Importer sa bibliothèque sans y passer la nuit
 
-Tu peux évidemment ajouter les jeux un par un. Tu peux aussi choisir de garder une vie sociale. **Bibliothèque → Importer** propose plusieurs chemins :
+Tu peux évidemment ajouter les jeux un par un. Tu peux aussi choisir de garder une vie sociale. **Bibliothèque → Importer des jeux** propose plusieurs chemins :
 
 <p align="center">
   <img src="docs/screenshots/gamedraw-import-menu.png" alt="GameDraw - menu Importer : Steam, liste TXT/CSV et archive ZIP" width="880" />
@@ -238,13 +240,13 @@ GameDraw existe sous trois formes.
 
 | Version | Fichier | Idéal pour |
 |---|---|---|
-| 🧙 **Installateur Windows** | `GameDraw_1.0.6_x64-setup.exe` | Installation classique et simple |
+| 🧙 **Installateur Windows** | `GameDraw_1.0.7_x64-setup.exe` | Installation classique et simple |
 | 🏢 **MSI** | `GameDraw_1.0.4_x64_en-US.msi` | Installation administrée / Windows Installer |
 | 🧳 **Portable** | `Portable\GameDraw.exe` | Lancer GameDraw sans installation |
 
 ### 🧙 Installateur classique
 
-1. Lance `GameDraw_1.0.6_x64-setup.exe`.
+1. Lance `GameDraw_1.0.7_x64-setup.exe`.
 2. Suis l'assistant Windows.
 3. Lance **GameDraw**.
 4. Essaie de ne pas passer 25 minutes à choisir ton thème avant ton premier tirage.
@@ -523,7 +525,7 @@ Dans **Options → Données → Supprimer toutes les données**, GameDraw ouvre 
 Les Options et la page Mises à jour ont un style harmonisé : boutons, cases et champs colorés selon le thème GameDraw, espacement et retours visuels cohérents. Les animations sont réduites si Windows demande une réduction des mouvements.
 
 
-## Listes de jeux embarquées — GameDraw 1.0.6 HF1
+## Listes de jeux embarquées — GameDraw 1.0.7 HF1
 
 L’application Windows embarque directement les listes CSV de découverte du projet, même en version portable, NSIS ou MSI. Dans **Bibliothèque → Importer → Listes fournies (complètes)**, choisis **PC (60)**, **Switch 1 (60)**, **Switch 2 (40)**, **Switch 1+2 (100)** ou **PC + Switch (160)** pour ajouter les deux plateformes en une opération. Tu disposes d’un aperçu et d’une confirmation. Les doublons sont ignorés, les jaquettes et fiches existantes sont préservées et les tags Switch 1/Switch 2 sont conservés. Ces listes sont des sélections de départ, **pas la liste exhaustive de tous les jeux sortis**. Tu peux toujours importer tes propres TXT/CSV.
 

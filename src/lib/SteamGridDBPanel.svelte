@@ -1,7 +1,8 @@
 <script lang="ts">
   import CoverImage from "./CoverImage.svelte";
   import { onMount } from "svelte";
-  import { api, type SteamGridGame, type SteamGridArtworkPage, type SteamGridFormat } from "./api";
+  import { api, type SteamGridGame, type SteamGridArtworkPage, type SteamGridFormat, type RawgGame } from "./api";
+  import { steamPortraitCandidates } from "./steam-cover";
   import { evaluateSteamGridSearch, hasNextSteamGridPage, steamGridWebSearchUrl, isDirectImageUrl } from "./steamgriddb-search";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -30,6 +31,7 @@
     return () => { if (dialogEl.open) dialogEl.close(); };
   });
   let games = $state<SteamGridGame[] | null>(null);
+  let publicGames = $state<RawgGame[] | null>(null);
   let selected = $state<SteamGridGame | null>(null);
   let gallery = $state<SteamGridArtworkPage | null>(null);
   let format = $state<SteamGridFormat>("portrait");
@@ -40,6 +42,8 @@
   let applied = $state(false);
   let webStatus = $state<string | null>(null);
   let pasted = $state("");
+  let previewUrl = $state<string | null>(null);
+  let previewFailed = $state(false);
   let requestSerial = 0;
   const configured = $derived(evaluateSteamGridSearch({ enabled: config.sourcesCoverActives.steamgriddb, apiKey: config.steamgriddbApiKey, query }));
   const lang = $derived(config.langue);
@@ -47,17 +51,26 @@
   async function search() {
     if (busy || savingId !== null) return;
     const state = evaluateSteamGridSearch({ enabled: config.sourcesCoverActives.steamgriddb, apiKey: config.steamgriddbApiKey, query });
-    if (state !== "ready") return;
+    if (state === "empty-query" || !query.trim()) return;
+    // Sans clé API SteamGridDB, on fournit une recherche directe de jaquettes
+    // officielles Steam, tout en gardant l'import manuel SteamGridDB accessible.
+    const publicMode = state === "missing-key" || state === "disabled";
     const serial = ++requestSerial;
     busy = true;
     failure = null;
     success = null;
     games = null;
+    publicGames = null;
     selected = null;
     gallery = null;
     try {
-      const response = await api.steamgriddbGames(config.steamgriddbApiKey.trim(), query.trim());
-      if (serial === requestSerial) games = response;
+      if (publicMode) {
+        const response = await api.steamStoreSearch(query.trim());
+        if (serial === requestSerial) publicGames = response;
+      } else {
+        const response = await api.steamgriddbGames(config.steamgriddbApiKey.trim(), query.trim());
+        if (serial === requestSerial) games = response;
+      }
     } catch (e) {
       if (serial === requestSerial) failure = String(e);
     } finally {
@@ -105,6 +118,23 @@
     }
   }
 
+  async function applySteamPublic(game: RawgGame) {
+    if (savingId !== null || busy) return;
+    savingId = game.id;
+    failure = null;
+    success = null;
+    try {
+      const path = await api.downloadSteamCover(platformId, gameId, game.id);
+      onApplied(path);
+      applied = true;
+      success = tr(lang,
+        "Jaquette officielle Steam enregistrée sans clé API. Elle est conservée localement en qualité native.",
+        "Official Steam artwork saved without an API key, at its native quality.");
+    } catch (e) {
+      failure = `${tr(lang, "Jaquette Steam indisponible", "Steam artwork unavailable")}: ${String(e)}`;
+    } finally { savingId = null; }
+  }
+
   async function pickFile() {
     if (savingId !== null || busy) return;
     failure = null;
@@ -124,6 +154,16 @@
     }
   }
 
+  function preparePreview(url: string) {
+    const trimmed = url.trim();
+    previewFailed = false;
+    previewUrl = isDirectImageUrl(trimmed) ? trimmed : null;
+    if (!previewUrl) failure = tr(lang,
+      "Utilisez le lien direct de l’image HTTPS (pas l’adresse de la page SteamGridDB).",
+      "Use the direct HTTPS image URL, not the SteamGridDB page URL.");
+    else failure = null;
+  }
+
   async function applyPastedUrl() {
     if (!isDirectImageUrl(pasted)) {
       failure = tr(lang, "Colle une adresse HTTPS directe vers une image, pas une page web.", "Paste a direct HTTPS image address, not a webpage.");
@@ -132,22 +172,58 @@
     await applyImage(pasted.trim(), -2);
   }
 
-  /** Pont volontairement explicite entre le site public non privilégié et GameDraw.
-   * Le clic droit du navigateur copie le lien de l'image, le clic dans GameDraw
-   * le valide et le sauvegarde localement. Pas d'injection de commandes Tauri
-   * dans une page web distante. */
+  /** Pont explicitement déclenché par l'utilisateur : d'abord une image binaire
+   * copiée, puis à défaut un lien HTTPS direct. Aucune lecture automatique d'un
+   * site tiers et aucune exposition des commandes Tauri dans la WebView distante. */
   async function importerImageCopiee() {
     failure = null;
+    if (savingId !== null || busy) return;
+    // Certaines WebView2 savent lire l'image binaire copiée (« Copier l'image »).
+    // Les permissions de presse-papiers peuvent l'empêcher : repli sur l'URL.
+    if (navigator.clipboard?.read) {
+      try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find(type => /^(image\/(png|jpeg|webp|gif))$/i.test(type));
+          if (!imageType) continue;
+          const blob = await item.getType(imageType);
+          if (blob.size > 15 * 1024 * 1024) {
+            failure = tr(lang, "Image copiée trop volumineuse (maximum 15 Mio).", "Copied image exceeds the 15 MiB limit.");
+            return;
+          }
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          // Découpage pour ne pas saturer la pile JS avec un spread géant.
+          let binary = "";
+          for (let index = 0; index < bytes.length; index += 8192) {
+            binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+          }
+          savingId = -3;
+          try {
+            const path = await api.saveClipboardCover(platformId, gameId, btoa(binary));
+            onApplied(path);
+            applied = true;
+            success = tr(lang, "Image copiée enregistrée sans compression supplémentaire par GameDraw, sans clé API.", "Copied image saved without additional compression by GameDraw, no API key.");
+          } catch (error) {
+            failure = `${tr(lang, "Import du presse-papiers refusé", "Clipboard import rejected")}: ${String(error)}`;
+          } finally { savingId = null; }
+          return;
+        }
+      } catch {
+        // Une lecture binaire refusée par WebView2 n'empêche pas les autres méthodes.
+      }
+    }
     try {
       if (!navigator.clipboard?.readText) throw new Error("clipboard API unavailable");
       const copied = (await navigator.clipboard.readText()).trim();
       if (!isDirectImageUrl(copied)) {
         pasted = copied;
+        previewUrl = null;
         failure = tr(lang, "Le presse-papiers ne contient pas d'adresse HTTPS d'image. Sur SteamGridDB, clic droit sur l'image → Copier l'adresse de l'image, puis réessaie.", "The clipboard does not contain a valid HTTPS image URL. On SteamGridDB, right-click the image → Copy image address, then try again.");
         return;
       }
       pasted = copied;
-      await applyImage(copied, -3);
+      preparePreview(copied);
+      webStatus = tr(lang, "Adresse récupérée. Vérifiez l’aperçu puis cliquez sur « Utiliser cette jaquette ».", "Address captured. Check the preview, then click ‘Use this cover’.");
     } catch {
       failure = tr(lang,
         "Windows refuse la lecture du presse-papiers. Clique dans le champ ci-dessous, fais Ctrl+V, puis Appliquer.",
@@ -226,15 +302,22 @@
       <label for="sgdb-title">{tr(lang, "Rechercher un jeu", "Search for a game")}</label>
       <div class="sgdb-search">
         <input id="sgdb-title" type="search" bind:this={searchInput} bind:value={query} placeholder={tr(lang, "Nom du jeu, édition, plateforme…", "Game title, edition, platform…")} onkeydown={(event) => { if (event.key === "Enter") { event.stopPropagation(); void search(); } }} />
-        <button class="sgdb-primary" onclick={search} disabled={configured !== "ready" || busy || savingId !== null}>
-          {#if busy}<Loader2 size={17} class="sgdb-spin" />{:else}<Search size={17} />{/if}
-          {tr(lang, "Rechercher", "Search")}
-        </button>
+        {#if configured === "missing-key" || configured === "disabled"}
+          <button class="sgdb-primary" onclick={search} disabled={busy || savingId !== null || !query.trim()}>
+            {#if busy}<Loader2 size={17} class="sgdb-spin" />{:else}<Search size={17} />{/if}
+            {tr(lang, "Chercher Steam · sans clé", "Search Steam · no key")}
+          </button>
+        {:else}
+          <button class="sgdb-primary" onclick={search} disabled={configured !== "ready" || busy || savingId !== null}>
+            {#if busy}<Loader2 size={17} class="sgdb-spin" />{:else}<Search size={17} />{/if}
+            {tr(lang, "Rechercher", "Search")}
+          </button>
+        {/if}
       </div>
       {#if !config.sourcesCoverActives.steamgriddb}
-        <p class="sgdb-notice">{tr(lang, "Source SteamGridDB désactivée dans Options → Connexion. La méthode manuelle reste disponible.", "SteamGridDB is disabled under Settings → Connections. Manual import is still available.")}</p>
+        <p class="sgdb-notice">{tr(lang, "SteamGridDB désactivé : recherche de jaquettes Steam sans clé disponible. Import manuel toujours possible.", "SteamGridDB disabled: no-key Steam artwork search is available. Manual import remains possible.")}</p>
       {:else if !config.steamgriddbApiKey.trim()}
-        <p class="sgdb-notice"><KeyRound size={16} /> {tr(lang, "Sans clé API : parcourez les jaquettes sur le site public dans une fenêtre GameDraw. Copiez l'adresse d'une image ou enregistrez-la, puis revenez ici pour l'importer. La galerie automatique nécessite une clé API.", "No API key: browse artwork on the public site in a GameDraw window. Copy an image address or save the file, then import it here. The automatic gallery requires an API key.")}</p>
+        <p class="sgdb-notice"><KeyRound size={16} /> {tr(lang, "Sans clé : recherchez et installez directement une jaquette officielle Steam. Pour une création communautaire SteamGridDB, ouvrez son site public puis importez le lien direct ou le fichier. La galerie automatique SteamGridDB exige sa clé API.", "No key: search and install official Steam artwork directly. For community SteamGridDB art, browse its public site and import the direct image link or file. Automatic SteamGridDB gallery requires its API key.")}</p>
       {:else if configured === "empty-query"}
         <p class="sgdb-notice">{tr(lang, "Saisissez un titre pour lancer la recherche.", "Enter a title to start searching.")}</p>
       {/if}
@@ -295,27 +378,54 @@
             <button onclick={() => openGame(candidate)}><span>{candidate.name}</span><ChevronRight size={16}/></button>
           {/each}
         </div>
-      {:else if configured === "missing-key"}
-        <p class="sgdb-empty">{tr(lang,"Sans clé : ouvrez le site public dans GameDraw, choisissez une illustration, puis importez l'URL directe ou le fichier ici.","No key: open the public website in GameDraw, choose an image, then import its direct URL or file here.")}</p>
+      {:else if publicGames}
+        <div class="sgdb-section-title"><strong>{tr(lang, "Jaquettes officielles Steam · sans clé", "Official Steam artwork · no key")}</strong></div>
+        <p class="sgdb-source-explain">{tr(lang, "Résultats Steam Store (pas SteamGridDB). L'import teste les affiches HD puis les autres formats publics disponibles. Sans résultat, utilise le site SteamGridDB ci-dessous.", "Steam Store results (not SteamGridDB). Import tries HD posters then other public formats. Use the SteamGridDB website below if none is available.")}</p>
+        <div class="sgdb-public-results">
+          {#each publicGames as candidate (candidate.id)}
+            <div class="sgdb-public-game">
+              <div class="sgdb-public-image"><CoverImage path={candidate.coverUrl || steamPortraitCandidates(candidate.id)[1] || null} alt={candidate.nom} variant="card" /></div>
+              <strong>{candidate.nom}</strong>
+              <button onclick={() => applySteamPublic(candidate)} disabled={savingId !== null || busy}>
+                {#if savingId === candidate.id}<Loader2 size={15} class="sgdb-spin" />{:else}<Download size={15}/>{/if}
+                {tr(lang, "Utiliser", "Use")}
+              </button>
+            </div>
+          {/each}
+        </div>
+        {#if publicGames.length === 0}<p class="sgdb-empty">{tr(lang, "Aucun jeu correspondant sur Steam. Ouvre SteamGridDB ci-dessous pour choisir une image manuellement.", "No matching Steam game. Browse SteamGridDB below to choose an image manually.")}</p>{/if}
+      {:else if configured === "missing-key" || configured === "disabled"}
+        <p class="sgdb-empty">{tr(lang,"Cherche un titre pour retrouver une jaquette Steam sans clé, ou ouvre SteamGridDB ci-dessous pour un choix manuel.","Search a title for a Steam cover without a key, or open SteamGridDB below for manual selection.")}</p>
       {:else}
         <p class="sgdb-empty">{tr(lang,"La recherche est prête. Choisissez un jeu puis une jaquette, ou utilisez une image manuelle ci-dessous.","Ready to search. Choose a game and then artwork, or use a manual image below.")}</p>
       {/if}
     </div>
 
-    <footer class="sgdb-manual">
-      <h3>{tr(lang, "Sans clé ou import manuel", "No key or manual import")}</h3>
+    <footer class="sgdb-manual" class:sgdb-manual-focused={configured !== "ready"}>
+      <h3>{tr(lang, "Choisir une jaquette · sans clé ou depuis un fichier", "Choose artwork · no API key or local file")}</h3>
       <div class="sgdb-actions">
         <button class="sgdb-primary" onclick={openInsideApp}><Images size={16}/>{tr(lang,"Parcourir SteamGridDB dans GameDraw", "Browse SteamGridDB in GameDraw")}</button>
-        <button onclick={importerImageCopiee} disabled={savingId !== null || busy} title={tr(lang,"Après clic droit sur une image SteamGridDB → Copier l’adresse de l’image", "After right-clicking a SteamGridDB image → Copy image address")}><Download size={16}/>{tr(lang,"Importer l’image copiée", "Import copied image")}</button>
+        <button onclick={importerImageCopiee} disabled={savingId !== null || busy} title={tr(lang,"Sur SteamGridDB : copier l’image ou son adresse HTTPS, puis cliquer ici", "On SteamGridDB: copy the image or its HTTPS address, then click here")}><Download size={16}/>{tr(lang,"Importer depuis le presse-papiers", "Import from clipboard")}</button>
         <button onclick={openWebsite}><ExternalLink size={16}/>{tr(lang,"Navigateur externe", "External browser")}</button>
         <button onclick={pickFile} disabled={savingId !== null || busy}><FolderOpen size={16}/>{tr(lang,"Choisir une image locale","Choose local image")}</button>
       </div>
       {#if webStatus}<p class="sgdb-webstatus" role="status">{webStatus}</p>{/if}
       <div class="sgdb-paste">
-        <input type="url" bind:value={pasted} placeholder={tr(lang,"Coller une URL directe d'image HTTPS…","Paste a direct HTTPS image URL…")} onkeydown={(event) => event.key === "Enter" && void applyPastedUrl()}/>
-        <button onclick={applyPastedUrl} disabled={!pasted.trim() || savingId !== null || busy}><Download size={15}/>{tr(lang,"Appliquer", "Apply")}</button>
+        <input type="url" bind:value={pasted} oninput={() => { previewUrl = null; previewFailed = false; }} placeholder={tr(lang,"Coller une URL directe d’image HTTPS…","Paste a direct HTTPS image URL…")} onkeydown={(event) => { if (event.key === "Enter") preparePreview(pasted); }}/>
+        <button onclick={() => preparePreview(pasted)} disabled={!pasted.trim() || savingId !== null || busy}><Search size={15}/>{tr(lang,"Aperçu", "Preview")}</button>
       </div>
-      <small>{tr(lang,"Le site public est consultable sans clé, mais la sélection automatique depuis sa page n'est pas disponible sans API. Clic droit sur une image du navigateur → « Copier l’adresse de l’image », puis « Importer l’image copiée » ici. Sinon Ctrl+V ou choisir un fichier. L'atelier reste ouvert jusqu'à votre décision.","The public site can be browsed without a key, but automatic selection from its webpage requires API access. Right-click a browser image → ‘Copy image address’, then ‘Import copied image’ here. You can also use Ctrl+V or select a file. The studio stays open until you close it.")}</small>
+      {#if previewUrl}
+        <div class="sgdb-manual-preview">
+          <div class="sgdb-manual-preview-picture"><img src={previewUrl} alt={tr(lang, "Aperçu de la jaquette", "Artwork preview")} onerror={() => (previewFailed = true)} onload={() => (previewFailed = false)}/></div>
+          <div class="sgdb-manual-preview-details">
+            <strong>{tr(lang, "Votre jaquette sélectionnée", "Your selected cover")}</strong>
+            <small>{tr(lang, "GameDraw vérifiera le fichier avant de l’enregistrer localement.", "GameDraw validates the image before saving it locally.")}</small>
+            {#if previewFailed}<small class="sgdb-preview-warning">{tr(lang, "Aperçu indisponible ; l’import peut fonctionner si le serveur autorise le téléchargement.", "Preview unavailable; import may still work if the server allows downloading.")}</small>{/if}
+            <button class="sgdb-primary" onclick={applyPastedUrl} disabled={savingId !== null || busy}><Check size={16}/>{tr(lang,"Utiliser cette jaquette", "Use this cover")}</button>
+          </div>
+        </div>
+      {/if}
+      <small>{tr(lang,"Le site public est consultable sans clé, mais la sélection automatique depuis sa page n'est pas disponible sans API. Clic droit sur une image → « Copier l’image » ou « Copier l’adresse de l’image », puis « Importer depuis le presse-papiers » ici. Sinon Ctrl+V ou choisir un fichier. L'atelier reste ouvert jusqu'à votre décision.","The public site can be browsed without a key, but automatic selection from its webpage requires API access. Right-click artwork → ‘Copy image’ or ‘Copy image address’, then ‘Import from clipboard’ here. You can also use Ctrl+V or select a file. The studio stays open until you close it.")}</small>
     </footer>
   </section>
 </dialog>
@@ -348,6 +458,12 @@
   .sgdb-section-title { display:flex; align-items:center; gap:14px; padding:4px 0 12px; }
   .sgdb-back { border:1px solid var(--border); border-radius:9px; color:var(--text); background:var(--input); padding:7px 10px; display:flex; gap:5px; align-items:center; cursor:pointer; }
   .sgdb-section-title strong { font-family:var(--font-display); font-size:1.08rem; }
+  .sgdb-source-explain { color:var(--muted);font-size:.78rem;line-height:1.5;margin:0 0 12px; }
+  .sgdb-public-results { display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px; }
+  .sgdb-public-game {display:flex;flex-direction:column;min-width:0;gap:8px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--input);}
+  .sgdb-public-game strong {font-size:.79rem;line-height:1.4;min-height:2.8em;overflow-wrap:anywhere;}
+  .sgdb-public-image {height:160px;width:100%;border-radius:8px;overflow:hidden;}
+  .sgdb-public-game button {display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:color-mix(in srgb,var(--accent) 20%,var(--input));color:var(--text);border:1px solid var(--accent);border-radius:8px;cursor:pointer;}
   .sgdb-games { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:9px; }
   .sgdb-games button { border:1px solid var(--border); border-radius:11px; background:color-mix(in srgb,var(--input) 87%,transparent); color:var(--text); padding:15px; display:flex; justify-content:space-between; gap:10px; align-items:center; cursor:pointer; text-align:left; }
   .sgdb-games button:hover,.sgdb-artwork:hover { border-color:var(--accent); }
@@ -365,12 +481,20 @@
   .sgdb-pagination button { display:flex; align-items:center; gap:4px; background:var(--input); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px; cursor:pointer; }
   .sgdb-empty { display:flex; justify-content:center; align-items:center; gap:8px; padding:20px; margin:0; text-align:center; font-size:.84rem; color:var(--muted); }
   .sgdb-manual { flex:none; max-height:37%; overflow-y:auto; overscroll-behavior:contain; border-top:1px solid var(--border); background:color-mix(in srgb,var(--input) 48%,transparent); padding:14px 24px 17px; display:grid; gap:9px; }
+  .sgdb-manual-focused { max-height:min(54%,460px); }
+  .sgdb-manual-preview { display:grid; grid-template-columns:minmax(85px,125px) 1fr; gap:14px; padding:12px; background:color-mix(in srgb,var(--accent) 9%,var(--card)); border:1px solid color-mix(in srgb,var(--accent) 32%,var(--border)); border-radius:12px; }
+  .sgdb-manual-preview-picture { aspect-ratio:2/3; min-width:0; border-radius:8px; background:var(--input); overflow:hidden; }
+  .sgdb-manual-preview-picture img { width:100%; height:100%; object-fit:contain; }
+  .sgdb-manual-preview-details { display:flex; flex-direction:column; align-items:start; justify-content:center; gap:8px; min-width:0; }
+  .sgdb-manual-preview-details strong { font-size:.88rem; }
+  .sgdb-manual-preview-details .sgdb-preview-warning { color:var(--danger); }
   .sgdb-manual h3 { margin:0; font-size:.86rem; font-family:var(--font-display); }
   .sgdb-manual small { font-size:.7rem; line-height:1.45; color:var(--muted); }
   .sgdb-actions { display:flex; flex-wrap:wrap; gap:9px; }
   .sgdb-webstatus { margin:0; font-size:.77rem; line-height:1.45; color:var(--success); overflow-wrap:anywhere; }
   .sgdb-paste button { white-space:nowrap; }
   @keyframes sgdb-spin {to { transform:rotate(360deg);}} .sgdb-spin {animation:sgdb-spin 1s linear infinite;}
+  @media (max-width:400px) { .sgdb-manual-preview { grid-template-columns:78px 1fr; gap:8px; padding:8px; } .sgdb-manual-preview .sgdb-primary { font-size:.73rem; } }
   @media (max-width:620px) { .sgdb-dialog { width:calc(100vw - 12px); height:calc(100dvh - 12px); border-radius:12px; } .sgdb-panel { border-radius:12px; } .sgdb-head h2 { font-size:1.13rem; } .sgdb-head p { font-size:.74rem; } .sgdb-manual { max-height:45%; } .sgdb-head,.sgdb-controls,.sgdb-results,.sgdb-manual { padding-left:13px; padding-right:13px; } .sgdb-search,.sgdb-paste { flex-wrap:wrap; } .sgdb-search input,.sgdb-paste input { flex-basis:100%; } .sgdb-notice,.sgdb-error,.sgdb-success { margin-left:13px; margin-right:13px; } }
 </style>
 
